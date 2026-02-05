@@ -1,5 +1,5 @@
 name: Project Issue
-description: Track tasks, bugs, ideas, or improvements for the finishing project
+description: Track tasks, bugs, ideas, or research notes for the game testing & difficulty assessment project
 title: "[Issue]: "
 labels: []
 assignees: []
@@ -8,19 +8,19 @@ body:
   - type: markdown
     attributes:
       value: |
-        This issue is for tracking work in the finishing project.
-        Keep it concise but clear for future reference.
+        This issue tracks work related to the game testing and difficulty assessment project.
+        It may correspond to implementation, experiments, evaluation, or thesis-related tasks.
 
   - type: dropdown
     id: issue_type
     attributes:
       label: Issue type
       options:
-        - Task
-        - Bug
-        - Improvement
-        - Research
-        - Documentation
+        - Task (implementation / setup)
+        - Bug (framework, environment, tooling)
+        - Improvement (method, metric, pipeline)
+        - Research (reading, critique, comparison)
+        - Documentation / Thesis
         - Other
     validations:
       required: true
@@ -29,7 +29,12 @@ body:
     id: related_component
     attributes:
       label: Related component / module
-      placeholder: e.g. AI module, UI, backend, simulation, report
+      placeholder: |
+        e.g. Learning layer (RL),
+        Difficulty metrics,
+        Multi-agent coordination,
+        Thesis – Methodology,
+        Thesis – Related Work
     validations:
       required: false
 
@@ -37,8 +42,11 @@ body:
     id: description
     attributes:
       label: Description
-      description: What needs to be done or what is the problem?
-      placeholder: Clearly describe the issue or task.
+      description: What is the task, problem, or observation?
+      placeholder: |
+        Example:
+        - Read the thesis proposal and assess whether methodology and evaluation plan are complete
+        - Identify missing components (datasets, baselines, metrics, experiments)
     validations:
       required: true
 
@@ -46,11 +54,23 @@ body:
     id: approach
     attributes:
       label: Planned approach / notes
-      description: Optional design thoughts, algorithms, or references.
+      description: Thoughts, critiques, or next steps.
       placeholder: |
-        - Possible solution
-        - Algorithms / papers
-        - TODO notes
+        Example:
+        - Compare proposed framework with Ferdous et al. (2022, 2025)
+        - Check if difficulty indicators are operationalized clearly
+        - Note missing evaluation or unclear assumptions
+    validations:
+      required: false
+
+  - type: textarea
+    id: related_links
+    attributes:
+      label: Related files / folders (links)
+      description: GitHub links to thesis, notes, code, or experiments.
+      placeholder: |
+        https://github.com/USERNAME/REPO/tree/main/documentation/thesis_proposal
+        https://github.com/USERNAME/REPO/tree/main/experiments
     validations:
       required: false
 
@@ -59,7 +79,7 @@ body:
     attributes:
       label: Acceptance criteria
       options:
-        - label: Implemented
-        - label: Tested
-        - label: Documented (if needed)
-        - label: Supervisor reviewed (if applicable)
+        - label: Task completed / analysis finished
+        - label: Findings written or summarized
+        - label: Action items identified
+        - label: Supervisor reviewed / discussed (if applicable)
