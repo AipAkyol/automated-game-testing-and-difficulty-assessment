@@ -1,0 +1,65 @@
+name: Project Issue
+description: Track tasks, bugs, ideas, or improvements for the finishing project
+title: "[Issue]: "
+labels: []
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is for tracking work in the finishing project.
+        Keep it concise but clear for future reference.
+
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: Issue type
+      options:
+        - Task
+        - Bug
+        - Improvement
+        - Research
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: related_component
+    attributes:
+      label: Related component / module
+      placeholder: e.g. AI module, UI, backend, simulation, report
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What needs to be done or what is the problem?
+      placeholder: Clearly describe the issue or task.
+    validations:
+      required: true
+
+  - type: textarea
+    id: approach
+    attributes:
+      label: Planned approach / notes
+      description: Optional design thoughts, algorithms, or references.
+      placeholder: |
+        - Possible solution
+        - Algorithms / papers
+        - TODO notes
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      options:
+        - label: Implemented
+        - label: Tested
+        - label: Documented (if needed)
+        - label: Supervisor reviewed (if applicable)
