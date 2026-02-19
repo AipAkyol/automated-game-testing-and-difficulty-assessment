@@ -34,7 +34,7 @@ import os
 import sys
 import textwrap
 
-# ── Import shared constants from the game package ──────────────────────
+# ── Import shared constants and solver from the game package ───────────
 from worm_escape.constants import (
     ANSI_BOLD,
     ANSI_COLORS,
@@ -42,6 +42,7 @@ from worm_escape.constants import (
     ANSI_RESET,
     HEAD_ARROWS,
 )
+from worm_escape.solver import is_solvable
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  COLOUR PALETTE  (cycles through these when assigning worms)
@@ -578,6 +579,28 @@ def export_level(state: EditorState):
     ld = _build_level_data(state, name)
     formatted = _format_level_data(ld)
 
+    # ── Solvability check ──────────────────────────────────────────
+    solvable, report = is_solvable(ld)
+    report_str = "\n    ".join(report)
+
+    if solvable:
+        print(f"\n  Solver: {ANSI_COLORS['green']}{ANSI_BOLD}SOLVABLE{ANSI_RESET}")
+        print(f"    {report_str}")
+    else:
+        ansi_red = ANSI_COLORS["red"]
+        print(
+            f"\n  {ansi_red}{ANSI_BOLD}"
+            f"WARNING: Deadlock detected! This level appears "
+            f"mathematically impossible to solve."
+            f"{ANSI_RESET}"
+        )
+        print(f"    {report_str}")
+        override = input(
+            "\n  Do you want to save anyway? (y/n): "
+        ).strip().lower()
+        if override not in ("y", "yes"):
+            return "Save cancelled — level is unsolvable."
+
     print(f"\n{'─' * 60}")
     print(formatted)
     print(f"{'─' * 60}\n")
@@ -716,13 +739,29 @@ def main():
                 w_input = input("  Worm ID> ").strip().upper()
                 msg = state.select_worm(w_input)
 
-        # ── Test / validate ────────────────────────────────────────
+        # ── Test / validate + solvability ──────────────────────────
         elif cmd == "T":
             errors = validate(state)
             if errors:
                 msg = "Validation FAILED:\n    " + "\n    ".join(errors)
             else:
-                msg = "Validation PASSED — level is valid!"
+                # Structural validation passed — now check solvability.
+                ld = _build_level_data(state, "solver_test")
+                solvable, report = is_solvable(ld)
+                report_str = "\n    ".join(report)
+                if solvable:
+                    msg = (
+                        "Validation PASSED — level is valid!\n"
+                        f"    {report_str}"
+                    )
+                else:
+                    ansi_red = ANSI_COLORS["red"]
+                    msg = (
+                        f"{ansi_red}{ANSI_BOLD}WARNING: Deadlock detected! "
+                        f"This level appears mathematically impossible to "
+                        f"solve.{ANSI_RESET}\n"
+                        f"    {report_str}"
+                    )
 
         # ── Save / export ──────────────────────────────────────────
         elif cmd == "S":
