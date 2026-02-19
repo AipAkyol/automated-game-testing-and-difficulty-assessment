@@ -8,7 +8,9 @@ and append it to the LEVELS list below.
 """
 
 from worm_escape.levels.level_01 import LEVEL_DATA as _L01
+from worm_escape.levels.level_02 import LEVEL_DATA as _LEVEL_02
 
 LEVELS = [
     _L01,
+    _LEVEL_02,
 ]

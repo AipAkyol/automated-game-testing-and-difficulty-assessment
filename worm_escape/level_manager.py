@@ -101,6 +101,21 @@ def load_level(level_data: dict):
 
         direction = meta["direction"]
         color     = meta.get("color", "white")
+
+        # Validate: head must be at the leading edge for its direction.
+        # e.g. a LEFT-facing worm's head must be its leftmost segment.
+        head_r, head_c = info["head"]
+        for br, bc in info["body"]:
+            if (direction == "left"  and bc < head_c or
+                direction == "right" and bc > head_c or
+                direction == "up"    and br < head_r or
+                direction == "down"  and br > head_r):
+                raise ValueError(
+                    f"Worm '{wid}': head at ({head_r},{head_c}) faces "
+                    f"{direction.upper()} but body at ({br},{bc}) is "
+                    f"further in that direction.  "
+                    f"The head must be at the leading edge of the worm.")
+
         coords    = info["body"] + [info["head"]]
         coords.sort(key=sort_keys[direction])
 
