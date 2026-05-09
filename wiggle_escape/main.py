@@ -10,11 +10,11 @@ Run from the repository root:
 import os
 import sys
 
-from worm_escape.constants import ANSI_BOLD, ANSI_COLORS, ANSI_RESET
-from worm_escape.engine import attempt_extraction
-from worm_escape.level_manager import load_level
-from worm_escape.levels import LEVELS
-from worm_escape.renderer import clear_screen, render
+from wiggle_escape.worm_escape.constants import ANSI_BOLD, ANSI_COLORS, ANSI_RESET
+from wiggle_escape.worm_escape.engine import attempt_extraction
+from wiggle_escape.worm_escape.level_manager import load_level
+from wiggle_escape.worm_escape.levels import LEVELS
+from wiggle_escape.worm_escape.renderer import clear_screen, render
 
 
 def enable_windows_ansi():

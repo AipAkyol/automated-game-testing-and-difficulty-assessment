@@ -8,8 +8,8 @@ the optional *on_step* callback lets callers hook in animation.
 
 import time
 
-from worm_escape.constants import ANIM_DELAY, DIR_DELTA
-from worm_escape.entities import Worm
+from wiggle_escape.worm_escape.constants import ANIM_DELAY, DIR_DELTA
+from wiggle_escape.worm_escape.entities import Worm
 
 
 def _occupied_by_others(worms: list, exclude_id: str) -> set:

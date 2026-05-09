@@ -56,7 +56,7 @@ import os
 import sys
 import random
 
-from worm_escape.constants import (
+from wiggle_escape.worm_escape.constants import (
     ANSI_BOLD,
     ANSI_COLORS,
     ANSI_DIM,
@@ -64,9 +64,9 @@ from worm_escape.constants import (
     DIR_DELTA,
     HEAD_ARROWS,
 )
-from worm_escape.level_manager import load_level
-from worm_escape.renderer import clear_screen, render
-from worm_escape.solver import is_solvable
+from wiggle_escape.worm_escape.level_manager import load_level
+from wiggle_escape.worm_escape.renderer import clear_screen, render
+from wiggle_escape.worm_escape.solver import is_solvable
 
 
 # ═══════════════════════════════════════════════════════════════════════════

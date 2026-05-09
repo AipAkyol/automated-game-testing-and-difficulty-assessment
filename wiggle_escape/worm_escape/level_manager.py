@@ -7,7 +7,7 @@ intentionally simple so that a separate Level Editor tool can export
 directly to the same schema.
 """
 
-from worm_escape.entities import Worm
+from wiggle_escape.worm_escape.entities import Worm
 
 
 def load_level(level_data: dict):

@@ -6,7 +6,7 @@ Handles screen clearing and drawing the ANSI-colored game board.
 
 import os
 
-from worm_escape.constants import (
+from wiggle_escape.worm_escape.constants import (
     ANSI_BOLD, ANSI_COLORS, ANSI_DIM, ANSI_RESET, HEAD_ARROWS,
 )
 

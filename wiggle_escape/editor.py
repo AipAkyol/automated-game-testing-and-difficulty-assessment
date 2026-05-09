@@ -35,14 +35,14 @@ import sys
 import textwrap
 
 # ── Import shared constants and solver from the game package ───────────
-from worm_escape.constants import (
+from wiggle_escape.worm_escape.constants import (
     ANSI_BOLD,
     ANSI_COLORS,
     ANSI_DIM,
     ANSI_RESET,
     HEAD_ARROWS,
 )
-from worm_escape.solver import is_solvable
+from wiggle_escape.worm_escape.solver import is_solvable
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  COLOUR PALETTE  (cycles through these when assigning worms)
@@ -428,7 +428,7 @@ def validate(state: EditorState) -> list[str]:
     # Try a full load_level round-trip to be sure.
     if not errors:
         try:
-            from worm_escape.level_manager import load_level
+            from wiggle_escape.worm_escape.level_manager import load_level
             ld = _build_level_data(state, "validation_test")
             load_level(ld)
         except Exception as e:

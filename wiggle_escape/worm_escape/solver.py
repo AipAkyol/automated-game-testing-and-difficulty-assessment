@@ -27,9 +27,9 @@ from __future__ import annotations
 import copy
 from typing import Tuple
 
-from worm_escape.constants import DIR_DELTA
-from worm_escape.entities import Worm
-from worm_escape.level_manager import load_level
+from wiggle_escape.worm_escape.constants import DIR_DELTA
+from wiggle_escape.worm_escape.entities import Worm
+from wiggle_escape.worm_escape.level_manager import load_level
 
 
 # ═══════════════════════════════════════════════════════════════════════════
