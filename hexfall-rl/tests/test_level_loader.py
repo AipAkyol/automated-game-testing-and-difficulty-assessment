@@ -214,7 +214,8 @@ def test_walls_and_question_buckets_load(tmp_path):
     state = load_level(p)
 
     assert isinstance(state.reserve[0][0], Wall)
-    assert state.reserve[0][1] == QuestionBucket(color="red", revealed=False)
+    # ?-bucket in top row becomes reachable at load, so reveal phase flips revealed=True.
+    assert state.reserve[0][1] == QuestionBucket(color="red", revealed=True)
 
 
 # ---------------------------------------------------------------------------
@@ -246,7 +247,11 @@ def test_generator_loads(tmp_path):
     p = _write(tmp_path, data)
     state = load_level(p)
 
-    assert state.reserve[0][0] == Generator(facing="right", remaining=2, queue=["red", "blue"])
+    # Generator faces right into (0, 1) which is empty at load → it fires once.
+    # After firing: produces "red" into (0, 1), remaining=1, queue=["blue"].
+    # It can't fire again because (0, 1) is now occupied.
+    assert state.reserve[0][0] == Generator(facing="right", remaining=1, queue=["blue"])
+    assert state.reserve[0][1] == PlainBucket(color="red")
 
 
 # ---------------------------------------------------------------------------

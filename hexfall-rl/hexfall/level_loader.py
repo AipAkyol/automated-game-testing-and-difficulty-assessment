@@ -5,6 +5,7 @@ from pathlib import Path
 
 import jsonschema
 
+from hexfall.game import run_until_quiescent
 from hexfall.types import (
     BufferBucket,
     GameState,
@@ -127,7 +128,6 @@ def load_level(path: str | Path, *, seed: int | None = None) -> GameState:
         quiescent=False,
     )
 
-    # TODO(session 2): replace with run_until_quiescent(state) once game.py exists.
-    state.quiescent = True
+    run_until_quiescent(state)
 
     return state
