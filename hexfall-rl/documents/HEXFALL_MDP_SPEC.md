@@ -174,6 +174,13 @@ A single MDP step proceeds as follows:
 
 The transition is stochastic only via step 2.iii (fall direction).
 
+**Deterministic tie-breaks.** Two situations require a tie-break that the rules doc and earlier spec versions did not pin down. The simulator must use these specific rules to preserve replay determinism:
+
+- **One bucket, multiple matching stacks.** If a single active bucket can pull from multiple bottom-row stacks on a tick (i.e., its color appears as the top slice on two or more bottom-row stacks), the simulator pulls from the stack with the smallest column index, breaking ties by smallest row index. No RNG is consumed.
+- **Same-color buckets with equal fill counts.** If two buckets of the same color have identical fill counts (including both at zero), the bucket in the lower-indexed buffer slot is treated as the "fuller" one for the same-color collision rule (`HEXFALL_RULES.md` §4). No RNG is consumed.
+
+Both rules are deterministic, preserve replay correctness, and were locked during simulator implementation (May 9, 2026). They are part of the MDP contract, not implementation freedom.
+
 **Initial load.** Level loading runs the same automatic-update loop (step 2 above) before returning the first observation to the agent. This means the initial observed state is always quiescent. In particular:
 
 - If a generator's facing cell is initially empty, it fires on load (per step 2.iv).
@@ -302,3 +309,4 @@ These items are not blocking for the simulator implementation. They will be reso
 - **May 5, 2026 (commander review):** Resolved 6 of the 9 flagged items. §7.2 (lose) simplified to "zero legal actions at quiescent state," subsuming the rules-doc deadlock as a special case; telemetry added (console + log file + `info` dict) so fallback firings are detectable as signals of bugged levels. §5.3 updated to remove the §7.2 open-question reference. §4.3 (generator queue visibility) confirmed as drafted. §10 restructured: resolved items moved to §10.1 with cross-references; deferred items consolidated in §10.2. Two resolutions also flowed back to `HEXFALL_RULES.md` (generator queue visibility, same-color same-tick pull behavior).
 - **May 5, 2026 (second pass):** Added walls as a fifth reserve cell type (§3.3, §4.3, §5.2). Walls are permanent obstacles, never picked, never removed, and block reachability through their cell. Initially missed in both `HEXFALL_RULES.md` and this spec; identified from a level 38 screenshot during planning of the level-format issue. Action legality (§5.2) explicitly excludes walls.
 - **May 7, 2026:** Added "Initial load" paragraph to §5.4 clarifying that level loading runs the same automatic-update loop until quiescence, with the empty-facing-cell guard applying on load (a generator does not fire at load if its facing cell is occupied). Resolves an open question flagged in the LEVEL_FORMAT.md worker deliverable. Real Hex Fall levels never have initial empty reserve cells, so no generator fires at load on real levels; the clarification matters for hand-built and generated test levels.
+- **May 9, 2026:** Added "Deterministic tie-breaks" paragraph to §5.4 documenting two rules locked during simulator implementation: (1) when one bucket has multiple matching stacks on a tick, pull from smallest-col then smallest-row; (2) when same-color buckets have tied fills, lowest-indexed buffer slot wins the same-color collision priority. Both rules preserve replay determinism without consuming RNG. Flowed back from simulator-implementation worker review (issue #3 closure).
