@@ -1,0 +1,22 @@
+{
+  "meta": {
+    "id": "forced-lose",
+    "name": "Forced Lose",
+    "version": 1,
+    "color_count": 2,
+    "notes": "Unwinnable by construction: field contains only red slices; reserve contains only a blue bucket. No blue ever appears in the field so the blue bucket can never fill. After the single blue bucket is picked and enters the buffer, no further legal actions exist — immediate deadlock-lose. Tests lose detection."
+  },
+  "field": {
+    "stacks": [
+      { "col": 0, "row": 0, "slices": ["red", "red"] }
+    ]
+  },
+  "buffer": { "slots": 5, "bucket_capacity": 25 },
+  "reserve": {
+    "rows": 1,
+    "cols": 1,
+    "cells": [
+      { "row": 0, "col": 0, "type": "plain_bucket", "color": "blue" }
+    ]
+  }
+}

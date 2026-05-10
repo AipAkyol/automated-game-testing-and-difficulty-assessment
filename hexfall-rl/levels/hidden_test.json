@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "id": "hidden-test",
+    "name": "Hidden Bucket Test",
+    "version": 1,
+    "color_count": 2,
+    "notes": "Tests the ?-bucket reveal mechanic. The ?-bucket at reserve [1,0] is hidden (not reachable) at level start. When the agent picks [0,0], [1,0] becomes reachable and its color (blue) is immediately revealed in the observation. The reserve has no initial empty cells (faithful to real Hex Fall level structure). Solvable under any pick order."
+  },
+  "field": {
+    "stacks": [
+      { "col": 0, "row": 0, "slices": ["red", "red", "red", "red"] },
+      { "col": 1, "row": 0, "slices": ["blue", "blue", "blue", "blue"] }
+    ]
+  },
+  "buffer": { "slots": 5, "bucket_capacity": 2 },
+  "reserve": {
+    "rows": 2,
+    "cols": 2,
+    "cells": [
+      { "row": 0, "col": 0, "type": "plain_bucket", "color": "red" },
+      { "row": 0, "col": 1, "type": "plain_bucket", "color": "red" },
+      { "row": 1, "col": 0, "type": "question_bucket", "color": "blue" },
+      { "row": 1, "col": 1, "type": "plain_bucket", "color": "blue" }
+    ]
+  }
+}

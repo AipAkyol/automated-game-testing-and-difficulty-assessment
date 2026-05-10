@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "id": "generator-test",
+    "name": "Generator Test",
+    "version": 1,
+    "color_count": 2,
+    "notes": "Exercises generator mechanics: (a) generator fires at load because [1,1] is initially empty; (b) generator fires mid-episode when agent picks the produced bucket at [1,1] freeing the cell; (c) generator exhausts after two firings (remaining reaches 0). Reachability never propagates through the generator cell [0,1] — [1,1] is reachable only via the side path through [1,0] and [0,0]. Solvable under correct play."
+  },
+  "field": {
+    "stacks": [
+      { "col": 0, "row": 0, "slices": ["red", "red"] },
+      { "col": 1, "row": 0, "slices": ["green", "green", "green", "green", "green", "green"] }
+    ]
+  },
+  "buffer": { "slots": 5, "bucket_capacity": 2 },
+  "reserve": {
+    "rows": 2,
+    "cols": 2,
+    "cells": [
+      { "row": 0, "col": 0, "type": "plain_bucket", "color": "red" },
+      {
+        "row": 0, "col": 1,
+        "type": "generator",
+        "facing": "down",
+        "remaining": 2,
+        "queue": ["green", "green"]
+      },
+      { "row": 1, "col": 0, "type": "plain_bucket", "color": "green" }
+    ]
+  }
+}
