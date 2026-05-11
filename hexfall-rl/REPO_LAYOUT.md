@@ -17,6 +17,7 @@ hexfall-rl/
 │   ├── env.py                # Gymnasium wrapper (reset, step, observation, action mask)
 │   ├── game.py               # Core Hex Fall mechanics (ticks, fall, generator, reachability)
 │   ├── level_loader.py       # JSON → game state; schema validation + semantic invariants
+│   ├── render.py             # CLI renderer: agent-view / full-view text dump of env state
 │   ├── types.py              # Dataclasses for game state (per MDP spec §3)
 │   └── schemas/
 │       └── level_schema.json # JSON Schema (draft-07) for level files
@@ -29,7 +30,7 @@ hexfall-rl/
 │   ├── deadlock_test.json    # Buffer deadlock under bad play; solvable under good play
 │   └── wall_test.json        # Wall shaping of reachability graph
 ├── scripts/
-│   └── run_random_agent.py   # Runs a random agent end-to-end on a given level
+│   └── run_random_agent.py   # Runs a random agent end-to-end; prints renderer output per step
 └── tests/                    # pytest test suite (56 tests across 3 files)
     ├── __init__.py
     ├── test_env.py           # Tests for Gymnasium env wrapper (env.py)
@@ -37,6 +38,5 @@ hexfall-rl/
     └── test_level_loader.py  # Tests for level loader (level_loader.py)
 ```
 
-Note: render.py is pending (Week 1 step 5 — CLI renderer, not yet implemented).
 Note: documents/ contains local copies of spec docs for Claude Code reference.
 Canonical versions live in the Claude project files, not the repo.
