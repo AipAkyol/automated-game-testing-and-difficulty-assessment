@@ -20,7 +20,8 @@ hexfall-rl/
 │   ├── render.py             # CLI renderer: agent-view / full-view text dump of env state
 │   ├── types.py              # Dataclasses for game state (per MDP spec §3)
 │   └── schemas/
-│       └── level_schema.json # JSON Schema (draft-07) for level files
+│       ├── level_schema.json        # JSON Schema (draft-07) for native level files
+│       └── paxie_level_schema.json  # JSON Schema (draft-07) for Paxie editor format (Anıl's 100-level dataset)
 ├── levels/                   # Hand-built level JSON files used for testing
 │   ├── README.md             # Level descriptions, mechanics covered, expected outcomes
 │   ├── tiny_solvable.json    # Original smoke-test level (2 colors, always solvable)
@@ -30,7 +31,8 @@ hexfall-rl/
 │   ├── deadlock_test.json    # Buffer deadlock under bad play; solvable under good play
 │   └── wall_test.json        # Wall shaping of reachability graph
 ├── scripts/
-│   └── run_random_agent.py   # Runs a random agent end-to-end; prints renderer output per step
+│   ├── run_random_agent.py     # Runs a random agent end-to-end; prints renderer output per step
+│   └── survey_paxie_levels.py  # Aggregate-only survey of CLASSIFIED.paxie_data/ → markdown report
 └── tests/                    # pytest test suite (56 tests across 3 files)
     ├── __init__.py
     ├── test_env.py           # Tests for Gymnasium env wrapper (env.py)
@@ -40,3 +42,8 @@ hexfall-rl/
 
 Note: documents/ contains local copies of spec docs for Claude Code reference.
 Canonical versions live in the Claude project files, not the repo.
+
+Gitignored sibling directory: `CLASSIFIED.paxie_data/` holds Anıl's 100-level
+dataset (`level_data/level1.json` … `level100.json`) and the generated
+`survey_report.md`. The dataset is classified; only the survey script and the
+Paxie JSON Schema are committable.
