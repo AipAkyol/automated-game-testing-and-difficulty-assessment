@@ -1,18 +1,17 @@
 {
-  "levelNumber": 2,
+  "levelNumber": 7,
   "levelVersionCode": 1,
   "collectorArea": {
-    "gridWidth": 5,
+    "gridWidth": 3,
     "gridHeight": 1,
     "singleBlockCollectors": [
-      { "x": 0, "y": 0, "color": "b" },
-      { "x": 1, "y": 0, "color": "b" },
-      { "x": 2, "y": 0, "color": "b" },
-      { "x": 3, "y": 0, "color": "b" },
-      { "x": 4, "y": 0, "color": "b" }
+      { "x": 0, "y": 0, "color": "b" }
     ],
     "woodBoxCollectors": [],
-    "iceCollectors": [],
+    "iceCollectors": [
+      { "x": 1, "y": 0, "hiddenColor": "r", "iceCapacity": 1 },
+      { "x": 2, "y": 0, "hiddenColor": "g", "iceCapacity": 2 }
+    ],
     "deadCells": [],
     "tunnels": [],
     "pinBlockers": [],
@@ -24,16 +23,16 @@
     "gridWidth": 1,
     "gridHeight": 1,
     "stacks": [
-      { "x": 0, "y": 0, "colors": ["r", "r"] }
+      { "x": 0, "y": 0, "colors": ["b", "r", "g"] }
     ],
     "tunnels": []
   },
   "editorMeta": {
-    "totalBlocks": 2,
-    "colorCount": 2,
-    "maxColorsPerStack": 1,
-    "heightMin": 2,
-    "heightMax": 2,
+    "totalBlocks": 3,
+    "colorCount": 3,
+    "maxColorsPerStack": 3,
+    "heightMin": 3,
+    "heightMax": 3,
     "randomness": 0.0,
     "verticalPercent": 0.0,
     "horizontalPercent": 0.0,

@@ -1,29 +1,46 @@
 {
-  "meta": {
-    "id": "wall-test",
-    "name": "Wall Reachability Test",
-    "version": 1,
-    "color_count": 2,
-    "notes": "Tests that walls meaningfully shape the reachability graph. The wall at [0,1] blocks the direct top-row access to [1,1]. Without this wall, picking [0,1] would immediately open [1,1]. With the wall, [1,1] is reachable only via [0,0]→[1,0]→[1,1] or [0,2]→[1,2]→[1,1]. [2,1] becomes reachable only after [1,1] is emptied. Uses initial empty cells at [2,0] and [2,2] to keep the grid small."
+  "levelNumber": 6,
+  "levelVersionCode": 1,
+  "collectorArea": {
+    "gridWidth": 3,
+    "gridHeight": 3,
+    "singleBlockCollectors": [
+      { "x": 0, "y": 0, "color": "r" },
+      { "x": 2, "y": 0, "color": "g" },
+      { "x": 0, "y": 1, "color": "r" },
+      { "x": 1, "y": 1, "color": "g" },
+      { "x": 2, "y": 1, "color": "g" },
+      { "x": 1, "y": 2, "color": "r" }
+    ],
+    "woodBoxCollectors": [],
+    "iceCollectors": [],
+    "deadCells": [
+      { "x": 1, "y": 0 }
+    ],
+    "tunnels": [],
+    "pinBlockers": [],
+    "mysteryCollectors": [],
+    "tiedPairs": [],
+    "keyLocks": []
   },
-  "field": {
+  "hexStackArea": {
+    "gridWidth": 2,
+    "gridHeight": 1,
     "stacks": [
-      { "col": 0, "row": 0, "slices": ["red", "red", "red", "red", "red", "red"] },
-      { "col": 1, "row": 0, "slices": ["green", "green", "green", "green", "green", "green"] }
-    ]
+      { "x": 0, "y": 0, "colors": ["r", "r", "r", "r", "r", "r"] },
+      { "x": 1, "y": 0, "colors": ["g", "g", "g", "g", "g", "g"] }
+    ],
+    "tunnels": []
   },
-  "buffer": { "slots": 5, "bucket_capacity": 2 },
-  "reserve": {
-    "rows": 3,
-    "cols": 3,
-    "cells": [
-      { "row": 0, "col": 0, "type": "plain_bucket", "color": "red" },
-      { "row": 0, "col": 1, "type": "wall" },
-      { "row": 0, "col": 2, "type": "plain_bucket", "color": "green" },
-      { "row": 1, "col": 0, "type": "plain_bucket", "color": "red" },
-      { "row": 1, "col": 1, "type": "plain_bucket", "color": "green" },
-      { "row": 1, "col": 2, "type": "plain_bucket", "color": "green" },
-      { "row": 2, "col": 1, "type": "plain_bucket", "color": "red" }
-    ]
+  "editorMeta": {
+    "totalBlocks": 12,
+    "colorCount": 2,
+    "maxColorsPerStack": 1,
+    "heightMin": 6,
+    "heightMax": 6,
+    "randomness": 0.0,
+    "verticalPercent": 0.0,
+    "horizontalPercent": 0.0,
+    "mysteryPercent": 0.0
   }
 }

@@ -11,6 +11,11 @@ dependencies = ["jsonschema", "gymnasium"]
 [project.optional-dependencies]
 dev = ["pytest"]
 
+[project.scripts]
+hexfall-random-agent = "scripts.run_random_agent:main"
+hexfall-render = "hexfall.render:main"
+hexfall-smoke-load = "scripts.smoke_load:main"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

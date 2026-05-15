@@ -4,10 +4,15 @@ from typing import Any
 import gymnasium as gym
 from gymnasium import spaces
 
-from hexfall.game import compute_reachability, is_terminal, legal_actions_mask
+from hexfall.game import (
+    compute_reachability,
+    is_terminal,
+    legal_actions_mask,
+    pin_blocked_cells,
+)
 from hexfall.game import step as _game_step
 from hexfall.level_loader import load_level
-from hexfall.types import Generator, PlainBucket, QuestionBucket, Wall
+from hexfall.types import Generator, IceBucket, PlainBucket, QuestionBucket, Wall
 
 
 class HexFallEnv(gym.Env):
@@ -20,16 +25,12 @@ class HexFallEnv(gym.Env):
         self._level_path = Path(level_path)
         self._init_seed = seed
 
-        # Load once to read grid dimensions for space declarations.
         state = load_level(self._level_path, seed=seed)
         self._reserve_rows = state.reserve_rows
         self._reserve_cols = state.reserve_cols
         self._state = state
 
         self.action_space = spaces.Discrete(self._reserve_rows * self._reserve_cols)
-
-        # Typed-space declaration for a dict-of-dicts with variable shapes is
-        # awkward, and downstream RL training will flatten/encode anyway. Defer.
         self.observation_space = spaces.Dict({})
 
     def reset(
@@ -43,7 +44,6 @@ class HexFallEnv(gym.Env):
     def step(self, action: int) -> tuple[dict, float, bool, bool, dict]:
         row = action // self._reserve_cols
         col = action % self._reserve_cols
-        # Propagates ValueError if action is illegal — do NOT swallow.
         info = _game_step(self._state, (row, col))
         reason = info["termination_reason"]
         terminated = reason is not None
@@ -79,11 +79,17 @@ class HexFallEnv(gym.Env):
                     {"color": slot.color, "capacity": slot.capacity, "fill": slot.fill}
                 )
 
+        blocked = pin_blocked_cells(state)
         reserve_obs: list[list[dict]] = []
         for r in range(state.reserve_rows):
             row_obs = []
             for c in range(state.reserve_cols):
-                row_obs.append(_cell_descriptor(state.reserve[r][c]))
+                desc = _cell_descriptor(state.reserve[r][c], state.move_counter)
+                if (r, c) in blocked:
+                    # Pin overlay replaces the cell's visible type but preserves
+                    # what's underneath, per MDP §4.3 pin ray subsection.
+                    desc = {"type": "pin_ray", "underneath": desc}
+                row_obs.append(desc)
             reserve_obs.append(row_obs)
 
         reach = compute_reachability(state)
@@ -94,6 +100,16 @@ class HexFallEnv(gym.Env):
             for c in range(state.reserve_cols)
         ]
 
+        pins_obs = [
+            {
+                "origin": (pin.origin_row, pin.origin_col),
+                "direction": pin.direction,
+                "block_count": pin.block_count,
+            }
+            for pin in state.pins
+            if not pin.destroyed
+        ]
+
         return {
             "field_visible": field_visible,
             "field_heights": field_heights,
@@ -101,6 +117,8 @@ class HexFallEnv(gym.Env):
             "reserve": reserve_obs,
             "reachability": reach,
             "action_mask": action_mask,
+            "pins": pins_obs,
+            "move_counter": state.move_counter,
         }
 
 
@@ -110,9 +128,9 @@ class HexFallEnv(gym.Env):
 
 def _lower_neighbors(col: int, row: int) -> list[tuple[int, int]]:
     """Lower-neighbor (col, row) positions in odd-r offset."""
-    if row & 1:  # odd row
+    if row & 1:
         return [(col, row + 1), (col + 1, row + 1)]
-    else:  # even row
+    else:
         return [(col - 1, row + 1), (col, row + 1)]
 
 
@@ -125,21 +143,12 @@ def _visible_slices(
     """Return the per-slice visibility list for one stack.
 
     Hidden slices are represented as "?".
-
-    Rules (MDP §4.1, RULES §3):
-      d=0          → always visible (top slice).
-      no live lower neighbor → bottom-row stack; all visible.
-      d < h - min_lower_height → exposed shoulder; visible.
-
-    # TODO: the "edge columns of alternating rows" visibility rule from
-    # RULES §3 is not implemented.  Omission means the agent sees more "?"
-    # than strictly necessary but never a slice that should be hidden.
     """
     h = len(slices)
     live_lower = [
         (lc, lr)
         for (lc, lr) in _lower_neighbors(col, row)
-        if field.get((lc, lr))  # non-empty stack exists
+        if field.get((lc, lr))
     ]
     if not live_lower:
         return list(slices)
@@ -152,7 +161,7 @@ def _visible_slices(
     ]
 
 
-def _cell_descriptor(cell) -> dict:
+def _cell_descriptor(cell, move_counter: int) -> dict:
     if cell is None:
         return {"type": "empty"}
     if isinstance(cell, PlainBucket):
@@ -161,6 +170,21 @@ def _cell_descriptor(cell) -> dict:
         if cell.revealed:
             return {"type": "question_bucket", "color": cell.color, "revealed": True}
         return {"type": "question_bucket", "color": "?", "revealed": False}
+    if isinstance(cell, IceBucket):
+        remaining = max(0, cell.thaw_threshold - move_counter)
+        if cell.thawed:
+            return {
+                "type": "ice_bucket_thawed",
+                "color": cell.color,
+                "thaw_threshold": cell.thaw_threshold,
+                "remaining_thaw_moves": 0,
+            }
+        return {
+            "type": "ice_bucket_frozen",
+            "color": "?",
+            "thaw_threshold": cell.thaw_threshold,
+            "remaining_thaw_moves": remaining,
+        }
     if isinstance(cell, Generator):
         # Generator output queue is hidden per MDP §4.3.
         return {"type": "generator", "facing": cell.facing, "remaining": cell.remaining}

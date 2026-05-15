@@ -1,27 +1,40 @@
 {
-  "meta": {
-    "id": "tiny-solvable",
-    "name": "Tiny Solvable",
-    "version": 1,
-    "color_count": 2,
-    "notes": "Smallest end-to-end smoke test. Single-row field, no fall-RNG exercised. Parity holds: 8 slices, 2 buckets x 4 capacity."
+  "levelNumber": 1,
+  "levelVersionCode": 1,
+  "collectorArea": {
+    "gridWidth": 2,
+    "gridHeight": 1,
+    "singleBlockCollectors": [
+      { "x": 0, "y": 0, "color": "r" },
+      { "x": 1, "y": 0, "color": "b" }
+    ],
+    "woodBoxCollectors": [],
+    "iceCollectors": [],
+    "deadCells": [],
+    "tunnels": [],
+    "pinBlockers": [],
+    "mysteryCollectors": [],
+    "tiedPairs": [],
+    "keyLocks": []
   },
-  "field": {
+  "hexStackArea": {
+    "gridWidth": 2,
+    "gridHeight": 1,
     "stacks": [
-      { "col": 0, "row": 0, "slices": ["red", "red", "red", "red"] },
-      { "col": 1, "row": 0, "slices": ["blue", "blue", "blue", "blue"] }
-    ]
+      { "x": 0, "y": 0, "colors": ["r", "r", "r", "r"] },
+      { "x": 1, "y": 0, "colors": ["b", "b", "b", "b"] }
+    ],
+    "tunnels": []
   },
-  "buffer": {
-    "slots": 5,
-    "bucket_capacity": 4
-  },
-  "reserve": {
-    "rows": 1,
-    "cols": 2,
-    "cells": [
-      { "row": 0, "col": 0, "type": "plain_bucket", "color": "red" },
-      { "row": 0, "col": 1, "type": "plain_bucket", "color": "blue" }
-    ]
+  "editorMeta": {
+    "totalBlocks": 8,
+    "colorCount": 2,
+    "maxColorsPerStack": 1,
+    "heightMin": 4,
+    "heightMax": 4,
+    "randomness": 0.0,
+    "verticalPercent": 0.0,
+    "horizontalPercent": 0.0,
+    "mysteryPercent": 0.0
   }
 }

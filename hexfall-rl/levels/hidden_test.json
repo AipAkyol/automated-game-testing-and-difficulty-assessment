@@ -1,26 +1,43 @@
 {
-  "meta": {
-    "id": "hidden-test",
-    "name": "Hidden Bucket Test",
-    "version": 1,
-    "color_count": 2,
-    "notes": "Tests the ?-bucket reveal mechanic. The ?-bucket at reserve [1,0] is hidden (not reachable) at level start. When the agent picks [0,0], [1,0] becomes reachable and its color (blue) is immediately revealed in the observation. The reserve has no initial empty cells (faithful to real Hex Fall level structure). Solvable under any pick order."
+  "levelNumber": 4,
+  "levelVersionCode": 1,
+  "collectorArea": {
+    "gridWidth": 2,
+    "gridHeight": 2,
+    "singleBlockCollectors": [
+      { "x": 0, "y": 0, "color": "r" },
+      { "x": 1, "y": 0, "color": "r" },
+      { "x": 1, "y": 1, "color": "b" }
+    ],
+    "woodBoxCollectors": [
+      { "x": 0, "y": 1, "hiddenColor": "b" }
+    ],
+    "iceCollectors": [],
+    "deadCells": [],
+    "tunnels": [],
+    "pinBlockers": [],
+    "mysteryCollectors": [],
+    "tiedPairs": [],
+    "keyLocks": []
   },
-  "field": {
+  "hexStackArea": {
+    "gridWidth": 2,
+    "gridHeight": 1,
     "stacks": [
-      { "col": 0, "row": 0, "slices": ["red", "red", "red", "red"] },
-      { "col": 1, "row": 0, "slices": ["blue", "blue", "blue", "blue"] }
-    ]
+      { "x": 0, "y": 0, "colors": ["r", "r", "r", "r"] },
+      { "x": 1, "y": 0, "colors": ["b", "b", "b", "b"] }
+    ],
+    "tunnels": []
   },
-  "buffer": { "slots": 5, "bucket_capacity": 2 },
-  "reserve": {
-    "rows": 2,
-    "cols": 2,
-    "cells": [
-      { "row": 0, "col": 0, "type": "plain_bucket", "color": "red" },
-      { "row": 0, "col": 1, "type": "plain_bucket", "color": "red" },
-      { "row": 1, "col": 0, "type": "question_bucket", "color": "blue" },
-      { "row": 1, "col": 1, "type": "plain_bucket", "color": "blue" }
-    ]
+  "editorMeta": {
+    "totalBlocks": 8,
+    "colorCount": 2,
+    "maxColorsPerStack": 1,
+    "heightMin": 4,
+    "heightMax": 4,
+    "randomness": 0.0,
+    "verticalPercent": 0.0,
+    "horizontalPercent": 0.0,
+    "mysteryPercent": 0.0
   }
 }

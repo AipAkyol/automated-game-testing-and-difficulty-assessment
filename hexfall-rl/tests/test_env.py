@@ -1,6 +1,4 @@
-import copy
 import json
-import random
 import warnings
 from pathlib import Path
 
@@ -22,34 +20,6 @@ def _write(tmp_path: Path, data: dict, name: str = "level.json") -> Path:
     p = tmp_path / name
     p.write_text(json.dumps(data))
     return p
-
-
-def _vis_level(
-    tmp_path: Path,
-    stacks: list[dict],
-    *,
-    reserve_rows: int = 1,
-    reserve_cols: int = 1,
-    reserve_cells: list[dict] | None = None,
-    cap: int = 25,
-    name: str = "vis.json",
-) -> Path:
-    """Build a minimal level JSON for visibility tests."""
-    if reserve_cells is None:
-        reserve_cells = [{"row": 0, "col": 0, "type": "plain_bucket", "color": "red"}]
-    colors: set[str] = set()
-    for s in stacks:
-        colors.update(s["slices"])
-    for c in reserve_cells:
-        if "color" in c:
-            colors.add(c["color"])
-    data = {
-        "meta": {"id": "vis-test", "name": "V", "version": 1, "color_count": len(colors)},
-        "field": {"stacks": stacks},
-        "buffer": {"slots": 5, "bucket_capacity": cap},
-        "reserve": {"rows": reserve_rows, "cols": reserve_cols, "cells": reserve_cells},
-    }
-    return _write(tmp_path, data, name)
 
 
 def _open_env(path: Path, seed: int = 0) -> tuple[HexFallEnv, dict]:
@@ -94,7 +64,6 @@ def test_action_mask_dimension_and_consistency():
     cols = env._state.reserve_cols
     assert len(obs["action_mask"]) == rows * cols
 
-    # Must match game.legal_actions_mask flattened row-major.
     expected_2d = legal_actions_mask(env._state)
     expected_flat = [expected_2d[r][c] for r in range(rows) for c in range(cols)]
     assert obs["action_mask"] == expected_flat
@@ -108,12 +77,10 @@ def test_action_index_decoding():
     flat = legal[0]
     r, c = flat // cols, flat % cols
 
-    # Replay on a fresh state using game.step directly.
     state_ref = load_level(TINY, seed=42)
     from hexfall.game import step as game_step
     game_step(state_ref, (r, c))
 
-    # env.step should yield same internal state.
     env.step(flat)
     assert env._state.field == state_ref.field
     assert env._state.buffer == state_ref.buffer
@@ -123,92 +90,206 @@ def test_action_index_decoding():
 def test_illegal_action_raises_value_error():
     env = HexFallEnv(TINY, seed=0)
     env.reset()
-    # Pick action 0 (red bucket at (0,0)). The cell becomes empty.
     env.step(0)
-    # Action 0 now points to an empty cell → illegal.
     with pytest.raises(ValueError):
         env.step(0)
+
+
+# ---------------------------------------------------------------------------
+# Observation: move counter and pins
+# ---------------------------------------------------------------------------
+
+def test_obs_includes_move_counter():
+    env = HexFallEnv(TINY, seed=0)
+    obs, _ = env.reset()
+    assert obs["move_counter"] == 0
+    obs2, _, _, _, _ = env.step(0)
+    assert obs2["move_counter"] == 1
+
+
+def test_obs_includes_pins_list():
+    env, obs = _open_env(LEVELS_DIR / "pin_test.json")
+    assert len(obs["pins"]) == 2
+    for pin in obs["pins"]:
+        assert "origin" in pin and "direction" in pin and "block_count" in pin
+
+
+def test_destroyed_pins_not_in_observation():
+    env, obs = _open_env(LEVELS_DIR / "pin_test.json")
+    assert len(obs["pins"]) == 2
+    # The (1, 2) pick destroys both pins (cascade) and wins the level.
+    legal = [i for i, m in enumerate(obs["action_mask"]) if m]
+    assert legal == [legal_actions_mask(env._state)[1].index(True) + 1 * env._reserve_cols]
+    obs2, _, terminated, _, _ = env.step(legal[0])
+    assert terminated
+    assert obs2["pins"] == []
+
+
+# ---------------------------------------------------------------------------
+# Observation: ice bucket encoding
+# ---------------------------------------------------------------------------
+
+def test_ice_bucket_frozen_hides_color():
+    env, obs = _open_env(LEVELS_DIR / "ice_test.json")
+    ice0 = obs["reserve"][0][1]
+    assert ice0["type"] == "ice_bucket_frozen"
+    assert ice0["color"] == "?"
+    assert ice0["thaw_threshold"] == 1
+    assert ice0["remaining_thaw_moves"] == 1
+
+
+def test_ice_bucket_remaining_decrements_with_move_counter():
+    env, obs = _open_env(LEVELS_DIR / "ice_test.json")
+    assert obs["reserve"][0][2]["remaining_thaw_moves"] == 2  # threshold 2, counter 0
+    obs2, _, _, _, _ = env.step(0)  # pick (0, 0) plain
+    # (0, 1) was threshold 1 → thawed now.
+    assert obs2["reserve"][0][1]["type"] == "ice_bucket_thawed"
+    assert obs2["reserve"][0][1]["color"] == "r"
+    # (0, 2) was threshold 2 → still frozen, remaining = 1.
+    assert obs2["reserve"][0][2]["type"] == "ice_bucket_frozen"
+    assert obs2["reserve"][0][2]["remaining_thaw_moves"] == 1
+
+
+def test_ice_bucket_thaws_reveals_color():
+    env, obs = _open_env(LEVELS_DIR / "ice_test.json")
+    env.step(0)
+    obs2 = env._get_obs()
+    assert obs2["reserve"][0][1]["color"] == "r"
+    assert obs2["reserve"][0][1]["type"] == "ice_bucket_thawed"
+
+
+# ---------------------------------------------------------------------------
+# Observation: pin overlay encoding
+# ---------------------------------------------------------------------------
+
+def test_pin_ray_cell_encoded_with_underneath():
+    env, obs = _open_env(LEVELS_DIR / "pin_test.json")
+    # Reserve (1, 0) is in pin A's ray and has a plain red bucket underneath.
+    cell = obs["reserve"][1][0]
+    assert cell["type"] == "pin_ray"
+    assert cell["underneath"]["type"] == "plain_bucket"
+    assert cell["underneath"]["color"] == "r"
+
+
+def test_pin_ray_cell_overlay_clears_after_destruction():
+    env, obs = _open_env(LEVELS_DIR / "pin_test.json")
+    # Pick (1, 2) → destroys both pins via cascade.
+    flat = 1 * env._reserve_cols + 2
+    env.step(flat)
+    obs2 = env._get_obs()
+    # No cells should report pin_ray type anymore.
+    for r in range(env._reserve_rows):
+        for c in range(env._reserve_cols):
+            assert obs2["reserve"][r][c]["type"] != "pin_ray"
 
 
 # ---------------------------------------------------------------------------
 # Visibility
 # ---------------------------------------------------------------------------
 
+def _vis_path(tmp_path: Path, stacks: list[dict], reserve_cells: list[dict],
+              gridWidth: int, name: str = "vis.json") -> Path:
+    colors: set[str] = set()
+    for s in stacks:
+        colors.update(s["colors"])
+    for c in reserve_cells:
+        if "color" in c:
+            colors.add(c["color"])
+    data = {
+        "levelNumber": 1, "levelVersionCode": 1,
+        "collectorArea": {
+            "gridWidth": gridWidth, "gridHeight": 1,
+            "singleBlockCollectors": reserve_cells,
+            "woodBoxCollectors": [], "iceCollectors": [],
+            "deadCells": [], "tunnels": [], "pinBlockers": [],
+            "mysteryCollectors": [], "tiedPairs": [], "keyLocks": [],
+        },
+        "hexStackArea": {
+            "gridWidth": max(s["x"] for s in stacks) + 1,
+            "gridHeight": max(s["y"] for s in stacks) + 1,
+            "stacks": stacks, "tunnels": [],
+        },
+        "editorMeta": {
+            "totalBlocks": sum(len(s["colors"]) for s in stacks),
+            "colorCount": max(1, len(colors)), "maxColorsPerStack": 4,
+            "heightMin": 1, "heightMax": 6, "randomness": 0.0,
+            "verticalPercent": 0.0, "horizontalPercent": 0.0, "mysteryPercent": 0.0,
+        },
+    }
+    return _write(tmp_path, data, name)
+
+
 def test_visibility_top_slice_only_when_covered(tmp_path):
-    # (0,0) height 4, lower neighbor (0,1) height 4.
-    # shoulder = 4 - 4 = 0. Only d=0 visible.
-    path = _vis_level(
+    path = _vis_path(
         tmp_path,
         stacks=[
-            {"col": 0, "row": 0, "slices": ["red", "red", "red", "red"]},
-            {"col": 0, "row": 1, "slices": ["red", "red", "red", "red"]},
+            {"x": 0, "y": 0, "colors": ["r", "r", "r", "r"]},
+            {"x": 0, "y": 1, "colors": ["r", "r", "r", "r"]},
         ],
         reserve_cells=[
-            {"row": 0, "col": 0, "type": "plain_bucket", "color": "red"},
-            {"row": 0, "col": 1, "type": "plain_bucket", "color": "red"},
+            {"x": 0, "y": 0, "color": "r"},
+            {"x": 1, "y": 0, "color": "r"},
         ],
-        reserve_cols=2,
+        gridWidth=2,
     )
     env, obs = _open_env(path)
     vis = obs["field_visible"][(0, 0)]
-    assert vis[0] == "red"
+    assert vis[0] == "r"
     assert vis[1:] == ["?", "?", "?"]
 
 
 def test_visibility_bottom_row_fully_visible(tmp_path):
-    # Single stack with no lower neighbors → all slices visible.
-    path = _vis_level(
+    path = _vis_path(
         tmp_path,
-        stacks=[{"col": 0, "row": 0, "slices": ["red", "blue", "green", "yellow"]}],
-        reserve_cells=[{"row": 0, "col": 0, "type": "plain_bucket", "color": "red"},
-                       {"row": 0, "col": 1, "type": "plain_bucket", "color": "blue"},
-                       {"row": 0, "col": 2, "type": "plain_bucket", "color": "green"},
-                       {"row": 0, "col": 3, "type": "plain_bucket", "color": "yellow"}],
-        reserve_cols=4,
+        stacks=[{"x": 0, "y": 0, "colors": ["r", "b", "g", "y"]}],
+        reserve_cells=[
+            {"x": 0, "y": 0, "color": "r"},
+            {"x": 1, "y": 0, "color": "b"},
+            {"x": 2, "y": 0, "color": "g"},
+            {"x": 3, "y": 0, "color": "y"},
+        ],
+        gridWidth=4,
     )
     env, obs = _open_env(path)
     vis = obs["field_visible"][(0, 0)]
     assert "?" not in vis
-    assert vis == ["red", "blue", "green", "yellow"]
+    assert vis == ["r", "b", "g", "y"]
 
 
 def test_visibility_shoulder_exposed(tmp_path):
-    # (0,0) height 4, lower neighbor (0,1) height 2.
-    # shoulder = 4 - 2 = 2. d<2 visible, d>=2 hidden.
-    path = _vis_level(
+    path = _vis_path(
         tmp_path,
         stacks=[
-            {"col": 0, "row": 0, "slices": ["red", "blue", "green", "yellow"]},
-            {"col": 0, "row": 1, "slices": ["red", "red"]},
+            {"x": 0, "y": 0, "colors": ["r", "b", "g", "y"]},
+            {"x": 0, "y": 1, "colors": ["r", "r"]},
         ],
         reserve_cells=[
-            {"row": 0, "col": 0, "type": "plain_bucket", "color": "red"},
-            {"row": 0, "col": 1, "type": "plain_bucket", "color": "blue"},
-            {"row": 0, "col": 2, "type": "plain_bucket", "color": "green"},
+            {"x": 0, "y": 0, "color": "r"},
+            {"x": 1, "y": 0, "color": "b"},
+            {"x": 2, "y": 0, "color": "g"},
         ],
-        reserve_cols=3,
+        gridWidth=3,
     )
     env, obs = _open_env(path)
     vis = obs["field_visible"][(0, 0)]
-    assert vis[0] == "red"
-    assert vis[1] == "blue"
+    assert vis[0] == "r"
+    assert vis[1] == "b"
     assert vis[2] == "?"
     assert vis[3] == "?"
 
 
 def test_visibility_field_heights_always_correct(tmp_path):
-    # Heights must match actual stack sizes even when slices are hidden.
-    path = _vis_level(
+    path = _vis_path(
         tmp_path,
         stacks=[
-            {"col": 0, "row": 0, "slices": ["red", "red", "red", "red"]},
-            {"col": 0, "row": 1, "slices": ["red", "red"]},
+            {"x": 0, "y": 0, "colors": ["r", "r", "r", "r"]},
+            {"x": 0, "y": 1, "colors": ["r", "r"]},
         ],
         reserve_cells=[
-            {"row": 0, "col": 0, "type": "plain_bucket", "color": "red"},
-            {"row": 0, "col": 1, "type": "plain_bucket", "color": "red"},
+            {"x": 0, "y": 0, "color": "r"},
+            {"x": 1, "y": 0, "color": "r"},
         ],
-        reserve_cols=2,
+        gridWidth=2,
     )
     env, obs = _open_env(path)
     assert obs["field_heights"][(0, 0)] == 4
@@ -219,65 +300,25 @@ def test_visibility_field_heights_always_correct(tmp_path):
 # Reserve observation
 # ---------------------------------------------------------------------------
 
-def test_question_bucket_hidden_then_revealed(tmp_path):
-    # Layout:
-    #   row 0: [plain(red), question(blue)]   — both top-row, both revealed at load
-    #   row 1: [question(green), None]        — unreachable at load; (1,0) has no empty top-neighbor
-    data = {
-        "meta": {"id": "qb", "name": "QB", "version": 1, "color_count": 3},
-        "field": {"stacks": [
-            {"col": 0, "row": 0, "slices": ["red"]},
-            {"col": 1, "row": 0, "slices": ["blue"]},
-            {"col": 0, "row": 1, "slices": ["green"]},
-        ]},
-        "buffer": {"slots": 5, "bucket_capacity": 1},
-        "reserve": {
-            "rows": 2, "cols": 2,
-            "cells": [
-                {"row": 0, "col": 0, "type": "plain_bucket", "color": "red"},
-                {"row": 0, "col": 1, "type": "question_bucket", "color": "blue"},
-                {"row": 1, "col": 0, "type": "question_bucket", "color": "green"},
-            ],
-        },
-    }
-    path = _write(tmp_path, data)
-    env = HexFallEnv(path, seed=0)
-    obs, _ = env.reset()
+def test_question_bucket_hidden_then_revealed():
+    env, obs = _open_env(LEVELS_DIR / "hidden_test.json")
 
-    # (0,1) question in top row → revealed at load.
-    assert obs["reserve"][0][1]["color"] == "blue"
-    assert obs["reserve"][0][1]["revealed"] is True
-
-    # (1,0) question: (0,0) is a plain bucket (non-empty) → not top-connected → hidden.
+    # Reserve layout (row=y, col=x):
+    #   (0,0)=plain r   (0,1)=plain r
+    #   (1,0)=?-bucket  (1,1)=plain b
+    # The ?-bucket at (1, 0) has (0, 0) above (occupied) → not reachable → hidden.
+    assert obs["reserve"][1][0]["type"] == "question_bucket"
     assert obs["reserve"][1][0]["color"] == "?"
     assert obs["reserve"][1][0]["revealed"] is False
 
-    # Pick (0,0) plain red → empties that slot → (1,0) becomes reachable.
+    # Pick the plain bucket at (0, 0) — flat = 0 * cols + 0 = 0.
     obs2, _, _, _, _ = env.step(0)
-    assert obs2["reserve"][1][0]["color"] == "green"
+    assert obs2["reserve"][1][0]["color"] == "b"
     assert obs2["reserve"][1][0]["revealed"] is True
 
 
-def test_generator_observation_has_no_queue(tmp_path):
-    data = {
-        "meta": {"id": "gen-obs", "name": "GO", "version": 1, "color_count": 2},
-        "field": {"stacks": [{"col": 0, "row": 0, "slices": ["red", "blue"]}]},
-        "buffer": {"slots": 5, "bucket_capacity": 1},
-        "reserve": {
-            "rows": 1, "cols": 2,
-            "cells": [
-                {"row": 0, "col": 0, "type": "plain_bucket", "color": "red"},
-                {
-                    "row": 0, "col": 1,
-                    "type": "generator", "facing": "left",
-                    "remaining": 0, "queue": [],
-                },
-            ],
-        },
-    }
-    path = _write(tmp_path, data)
-    env = HexFallEnv(path, seed=0)
-    obs, _ = env.reset()
+def test_generator_observation_has_no_queue():
+    env, obs = _open_env(LEVELS_DIR / "generator_test.json")
     gen_desc = obs["reserve"][0][1]
     assert gen_desc["type"] == "generator"
     assert "facing" in gen_desc
@@ -291,16 +332,15 @@ def test_generator_observation_has_no_queue(tmp_path):
 
 def test_win_reward_plus_one():
     env = HexFallEnv(TINY, seed=0)
-    obs, _ = env.reset()
-    cols = env._state.reserve_cols
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        obs, _ = env.reset()
 
-    # First pick (red bucket at (0,0)).
     legal = [i for i, m in enumerate(obs["action_mask"]) if m]
     obs, reward, terminated, _, info = env.step(legal[0])
     assert not terminated
     assert reward == 0.0
 
-    # Second pick (blue bucket at (0,1)).
     legal2 = [i for i, m in enumerate(obs["action_mask"]) if m]
     obs2, reward2, terminated2, _, info2 = env.step(legal2[0])
     assert terminated2
@@ -308,34 +348,20 @@ def test_win_reward_plus_one():
     assert info2["termination_reason"] == "win"
 
 
-def test_deadlock_reward_minus_one(tmp_path):
-    # 5 red reserve buckets, 1 blue field slice — picking all 5 reds fills buffer
-    # with wrong-color buckets, leaving the blue slice unconsumed → deadlock.
-    data = {
-        "meta": {"id": "dl", "name": "DL", "version": 1, "color_count": 2},
-        "field": {"stacks": [{"col": 0, "row": 0, "slices": ["blue"] * 5}]},
-        "buffer": {"slots": 5, "bucket_capacity": 1},
-        "reserve": {
-            "rows": 1, "cols": 5,
-            "cells": [
-                {"row": 0, "col": i, "type": "plain_bucket", "color": "red"}
-                for i in range(5)
-            ],
-        },
-    }
-    path = _write(tmp_path, data)
-    env = HexFallEnv(path, seed=0)
-    obs, _ = env.reset()
-
-    reward, terminated, info = 0.0, False, {}
-    for _ in range(10):
+def test_deadlock_reward_minus_one():
+    env, obs = _open_env(LEVELS_DIR / "forced_lose.json")
+    # Pick all 5 blue buckets in sequence; each enters a buffer slot but none can
+    # pull from the red-only field → buffer fills → deadlock.
+    reward = 0.0
+    terminated = False
+    info: dict = {}
+    for _ in range(5):
         legal = [i for i, m in enumerate(obs["action_mask"]) if m]
         if not legal:
             break
         obs, reward, terminated, _, info = env.step(legal[0])
         if terminated:
             break
-
     assert terminated
     assert reward == -1.0
     assert info["termination_reason"] == "deadlock"
@@ -346,14 +372,14 @@ def test_deadlock_reward_minus_one(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_determinism_replay():
-    env1 = HexFallEnv(TINY, seed=7)
-    obs1_0, _ = env1.reset()
-
-    env2 = HexFallEnv(TINY, seed=7)
-    obs2_0, _ = env2.reset()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        env1 = HexFallEnv(TINY, seed=7)
+        obs1_0, _ = env1.reset()
+        env2 = HexFallEnv(TINY, seed=7)
+        obs2_0, _ = env2.reset()
     assert obs1_0 == obs2_0
 
-    # Solve tiny_solvable deterministically (pick action 0 then 1).
     for action in [0, 1]:
         o1, r1, t1, tr1, i1 = env1.step(action)
         o2, r2, t2, tr2, i2 = env2.step(action)
@@ -363,12 +389,13 @@ def test_determinism_replay():
 
 
 def test_reset_seed_overrides_init_seed():
-    # Env created with seed=1, reset with seed=2. State must match seed=2.
-    env_ref = HexFallEnv(TINY, seed=2)
-    obs_ref, _ = env_ref.reset()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        env_ref = HexFallEnv(TINY, seed=2)
+        obs_ref, _ = env_ref.reset()
 
-    env = HexFallEnv(TINY, seed=1)
-    env.reset()
-    obs_override, _ = env.reset(seed=2)
+        env = HexFallEnv(TINY, seed=1)
+        env.reset()
+        obs_override, _ = env.reset(seed=2)
 
     assert obs_override == obs_ref

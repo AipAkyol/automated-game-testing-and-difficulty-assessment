@@ -1,5 +1,5 @@
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -14,6 +14,15 @@ class QuestionBucket:
 
 
 @dataclass
+class IceBucket:
+    row: int
+    col: int
+    color: str          # hidden from agent until thawed
+    thaw_threshold: int # iceCapacity from JSON
+    thawed: bool = False
+
+
+@dataclass
 class Generator:
     facing: str      # 'up'|'down'|'left'|'right'
     remaining: int
@@ -25,7 +34,16 @@ class Wall:
     pass
 
 
-ReserveCell = PlainBucket | QuestionBucket | Generator | Wall  # Union; None = implicit empty
+@dataclass
+class Pin:
+    origin_row: int
+    origin_col: int
+    direction: str      # "Up", "Down", "Left", "Right"
+    block_count: int    # 0 means extend to grid edge
+    destroyed: bool = False
+
+
+ReserveCell = PlainBucket | QuestionBucket | IceBucket | Generator | Wall  # None = implicit empty
 
 
 @dataclass
@@ -57,3 +75,9 @@ class GameState:
     # Runtime
     rng: random.Random
     quiescent: bool
+
+    # Pins overlay the reserve grid; stored separately from cell content.
+    pins: list[Pin] = field(default_factory=list)
+
+    # Move counter starts at 0 and increments on each player action; gates ice thaw.
+    move_counter: int = 0

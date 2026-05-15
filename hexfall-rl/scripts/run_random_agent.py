@@ -52,7 +52,7 @@ def run(
     print(f"Hit max_steps={max_steps} without termination.")
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--level", dest="level_path", required=True)
     p.add_argument("--env-seed", type=int, default=None)
@@ -68,6 +68,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Shortcut for --mode full",
     )
-    args = p.parse_args()
+    args = p.parse_args(argv)
     mode = "full" if args.full else args.mode
     run(args.level_path, args.env_seed, args.agent_seed, mode=mode)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

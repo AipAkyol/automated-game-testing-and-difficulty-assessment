@@ -1,6 +1,6 @@
 from hexfall.env import HexFallEnv
-from hexfall.game import compute_reachability
-from hexfall.types import Generator, PlainBucket, QuestionBucket, Wall
+from hexfall.game import compute_reachability, pin_blocked_cells
+from hexfall.types import Generator, IceBucket, PlainBucket, QuestionBucket, Wall
 
 
 _COLOR_W = 6
@@ -74,6 +74,7 @@ def _render_buffer(state) -> list[str]:
 
 def _render_reserve(state, mode: str) -> list[str]:
     reach = compute_reachability(state)
+    blocked = pin_blocked_cells(state)
     rows, cols = state.reserve_rows, state.reserve_cols
 
     grid: list[list[str]] = []
@@ -81,7 +82,11 @@ def _render_reserve(state, mode: str) -> list[str]:
         row_cells: list[str] = []
         for c in range(cols):
             cell = state.reserve[r][c]
-            row_cells.append(_format_reserve_cell(cell, reach[r][c], mode))
+            underneath = _format_reserve_cell(cell, reach[r][c], mode, state.move_counter)
+            if (r, c) in blocked:
+                row_cells.append(f"PIN[{underneath}]")
+            else:
+                row_cells.append(underneath)
         grid.append(row_cells)
 
     col_widths = [
@@ -97,7 +102,7 @@ def _render_reserve(state, mode: str) -> list[str]:
     return lines
 
 
-def _format_reserve_cell(cell, reachable: bool, mode: str) -> str:
+def _format_reserve_cell(cell, reachable: bool, mode: str, move_counter: int) -> str:
     if cell is None:
         return "...."
     if isinstance(cell, Wall):
@@ -108,16 +113,42 @@ def _format_reserve_cell(cell, reachable: bool, mode: str) -> str:
     if isinstance(cell, QuestionBucket):
         if mode == "full":
             return f"QB:{_trunc(cell.color)}({flag})"
-        # agent mode
         if cell.revealed:
             return f"QB:{_trunc(cell.color)}({flag})"
         return f"QB:???({flag})"
+    if isinstance(cell, IceBucket):
+        remaining = max(0, cell.thaw_threshold - move_counter)
+        if cell.thawed:
+            return f"IC:{_trunc(cell.color)}/T({flag})"
+        if mode == "full":
+            return f"IC:{_trunc(cell.color)}/F{remaining}({flag})"
+        return f"IC:???/F{remaining}({flag})"
     if isinstance(cell, Generator):
         if mode == "full":
             queue_str = "[" + ",".join(_trunc(q) for q in cell.queue) + "]"
             return f"GN:{cell.facing},{cell.remaining},{queue_str}"
         return f"GN:{cell.facing},{cell.remaining}"
     return "?CELL?"
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI: render the initial state of a level."""
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Render the initial observation of a Hex Fall level."
+    )
+    parser.add_argument("--level", dest="level_path", required=True)
+    parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument(
+        "--mode", choices=("agent", "full"), default="agent",
+        help="agent = observation-limited; full = full simulator state.",
+    )
+    args = parser.parse_args(argv)
+
+    env = HexFallEnv(args.level_path, seed=args.seed)
+    env.reset()
+    print(render(env, args.mode))
+    return 0
 
 
 def render(env: HexFallEnv, mode: str = "agent") -> str:
