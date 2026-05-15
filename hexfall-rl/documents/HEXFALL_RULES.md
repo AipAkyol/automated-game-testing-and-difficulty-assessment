@@ -96,7 +96,31 @@ Reachability is computed as **graph connectivity from the top edge** of the rese
 
 **? buckets:** Some buckets have unknown color until reached. The color is **deterministic** (same color on every replay of the same level), but is hidden from the player until the bucket becomes reachable. Reaching here means becoming pickable, not necessarily picked.
 
+**Ice buckets:** Some buckets start the level encased in ice and are unusable until they thaw. Each ice bucket has a fixed **thaw threshold** measured in player moves (the level data calls this `iceCapacity`). The level maintains a **move counter** that starts at 0 and increments by 1 each time the player picks a bucket from the reserve. When the move counter reaches an ice bucket's thaw threshold, the bucket thaws immediately and becomes a normal bucket with its (previously hidden) color revealed.
+
+- Before thawing, an ice bucket is **not pickable** — it cannot be placed into the buffer regardless of reachability.
+- Before thawing, an ice bucket **blocks reachability propagation through its cell**, same as an unpicked bucket, generator, or wall.
+- The ice bucket's color is hidden from the player until it thaws. Like ?-buckets, this color is deterministic per level — same color on every replay.
+- After thawing, the ice bucket behaves identically to a normal bucket: it is pickable when reachable, has the standard capacity (default 25), and contributes to slice-bucket parity exactly like any other bucket.
+- Thawing is **deterministic** given the move counter: the same sequence of player moves yields the same set of thawed ice buckets at any point in the trajectory.
+
+Ice buckets contribute to slice-bucket parity from level start — their capacity is counted even while they are still frozen. A level with ice buckets is therefore *unwinnable until the player makes enough moves to thaw the buckets whose colors are needed for the field's remaining slices*.
+
 **Walls:** Some reserve cells contain **walls** instead of buckets, generators, or empty space. A wall is a permanent obstacle: it cannot be picked, never gets removed during play, and **blocks reachability propagation through its cell** (same as an unpicked bucket or a generator). Level designers use walls to shape the reachability graph — e.g., forcing the player around a wall to reach the buckets on the other side. Walls are static for the entire level.
+
+**Pin blockers:** Pins are ray-shaped barriers placed on the reserve grid. Each pin is defined by an **origin cell** `(x, y)`, a **direction** (`Up`, `Down`, `Left`, or `Right`), and an optional **block count** `b ≥ 0`.
+
+- The pin occupies a **ray of cells** starting at the origin and extending in the pin's direction:
+  - If `b ≥ 1`, the ray spans **`b + 1` cells**: the origin plus `b` additional cells in the direction. (Example: a pin at `(5, 3)` with direction `Right` and `blockCount: 2` occupies cells `(5, 3)`, `(6, 3)`, `(7, 3)`.)
+  - If `b = 0` or the `blockCount` field is absent, the ray extends from the origin all the way to the **grid edge** in the pin's direction.
+- The ray **passes through walls**: a pin's ray can occupy the same cell as a wall (`deadCell`); the wall and the pin are stacked, both present until the pin is destroyed.
+- Each cell in the pin's ray **cannot hold a bucket and cannot be picked**. The cell is functionally a wall for the pin's lifetime.
+- Crucially, the pin **blocks reachability propagation along its ray**: a path of adjacency that would otherwise propagate from one side of the ray to the other is blocked. Phrased differently — reachability does not cross the pin's ray, on either of the two perpendicular sides. This is the gameplay purpose of pins: they partition the reserve into regions that are temporarily unreachable from the top edge.
+- A pin is **destroyed** when the bucket in the cell **directly behind the origin** is cleared. "Behind" means one step in the direction *opposite* the pin's facing direction. (Example: a pin at `(5, 3)` facing `Right` is destroyed when the bucket at `(4, 3)` is cleared. A pin at `(5, 3)` facing `Down` is destroyed when the bucket at `(5, 2)` is cleared. Coordinate semantics follow the level data convention where `y` increases downward.)
+- When destroyed, **all cells of the ray become empty**, just as if each had been a bucket that was picked. Reachability is recomputed; previously unreachable regions on the far side of the ray may now become reachable.
+- The destruction cell itself (behind the origin) must hold a normal bucket — pins cannot be destroyed by clearing generators, walls, or other pins. If the cell behind the origin is empty, contains a wall, or is otherwise non-bucket, the pin is **permanent for the level** unless the cell later receives a generator-produced bucket that is then cleared.
+
+Pins are static once placed: their origin, direction, and block count do not change during play. Destruction is the only state transition.
 
 **Slice-bucket parity:** Levels are constructed such that the total slice count in the field equals the total slice capacity across all buckets in the reserve. A level is winnable in principle iff the player picks buckets in an order that respects buffer capacity throughout.
 
@@ -139,6 +163,8 @@ This section is critical for RL design. It enumerates exactly what's determinist
 - Bucket reserve initial layout
 - Generator positions, orientations, and output sequences
 - ? bucket colors (hidden but fixed per-level)
+- Ice bucket thaw thresholds and colors (hidden but fixed per-level; thaw timing is a deterministic function of the player's move sequence)
+- Pin positions, directions, block counts, and destruction conditions
 
 **Stochastic:**
 
@@ -147,6 +173,7 @@ This section is critical for RL design. It enumerates exactly what's determinist
 **Hidden information (POMDP):**
 
 - ? bucket colors are hidden until the bucket becomes reachable.
+- Ice bucket colors are hidden until the bucket thaws. The thaw threshold (number of moves required) is visible to the player at all times.
 - Slices in the hex field are *partially* visible based on the geometric rules in §3 (Visibility). Bottom-row slices are fully visible; otherwise visibility depends on stack height and grid position.
 
 **Implication:** Hex Fall is a partially observable Markov decision process (POMDP) with a single source of stochasticity (the fall direction). An RL agent must reason under uncertainty about both hidden bucket colors and hidden slice compositions, plus stochastic transitions in the field.
@@ -175,7 +202,54 @@ These are hypotheses about what makes a level hard, not authoritative rules. The
 
 ---
 
-## 10. Open questions and TODOs
+## 10. Color palette
+
+Real Hex Fall levels use a fixed palette of color codes. Two encodings appear in the level data:
+
+**Short codes** (used in 95 of 100 levels in the validation dataset):
+
+`b`, `br`, `db`, `dg`, `dgr`, `do`, `dr`, `f`, `g`, `gr`, `o`, `og`, `p`, `pk`, `r`, `w`, `y`
+
+The semantic meaning of each code is not documented by Paxie and is not required by the simulator — the simulator treats colors as opaque tokens. Pairwise distinctness is the only property the simulator cares about. Approximate human-readable interpretations (for debugging only):
+
+| Code | Likely name | Code | Likely name |
+|------|-------------|------|-------------|
+| `r` | red | `dr` | dark red |
+| `g` | green | `dg` | dark green |
+| `b` | blue | `db` | dark blue |
+| `y` | yellow | `dgr` | dark gray |
+| `o` | orange | `do` | dark orange |
+| `og` | olive green | `gr` | gray |
+| `p` | purple | `pk` | pink |
+| `w` | white | `br` | brown |
+| `f` | (filler / sand?) | | |
+
+**Full-name encoding** (used in 5 levels — 81, 82, 83, 85, 86):
+
+A subset of levels uses full-word color tokens instead of short codes. These appear in stacks, collectors, and tunnel queues throughout those 5 levels (no mixed encoding within a single level). The encoding is per-level, not per-field. Loader normalizes full names to short codes at parse time using the following mapping:
+
+| Full name | Short code |
+|-----------|------------|
+| `Yellow` | `y` |
+| `Blue` | `b` |
+| `Red` | `r` |
+| `Green` | `g` |
+| `Purple` | `p` |
+| `Pink` | `pk` |
+| `Orange` | `o` |
+| `White` | `w` |
+| `DarkBlue` | `db` |
+| `DarkRed` | `dr` |
+| `DarkGray` | `dgr` |
+| `OliveGreen` | `og` |
+
+Internally, the simulator and all downstream code work exclusively in short codes. The full-name encoding is an artifact of a different editor session/build used for levels 81–86 and is not preserved past the loader boundary.
+
+**Per-level color count:** Levels in the validation dataset have 2–7 distinct colors, with median 5. Two levels (87 and 91) declare a lower `editorMeta.colorCount` than the number of distinct colors actually present in the level data — this is treated as a non-blocking warning at load time, not an error, since the actual color set is the authoritative source.
+
+---
+
+## 11. Open questions and TODOs
 
 Most of the originally-flagged open questions were resolved on May 2, 2026. What remains:
 
@@ -185,10 +259,11 @@ All other previously-open questions (slice visibility, generator end-of-queue be
 
 ---
 
-## 11. Revision history
+## 12. Revision history
 
 - **May 2, 2026:** Initial version. 11 sections. Created in commander chat from prior conversation with user. Open questions in §10 are deliberate — they should be resolved before MDP design begins.
 - **May 2, 2026 (second pass):** Resolved 4 of 5 originally-open questions in a follow-up exchange. Added Visibility subsection to §3 (slices below the top are partially visible based on stack-height and edge-column geometry — Hex Fall is a partial-observability POMDP, not zero-observability). Clarified §5 generator semantics: number = remaining bucket count, generators stay blocking after exhaustion, reachability does not propagate through generator cells. Updated §8 to reference geometric visibility rules. Pinned color count parameter to typical range 5–7 in §9. Only one empirical question remains in §10.
 - **May 5, 2026:** Two clarifications flowing back from `HEXFALL_MDP_SPEC.md` commander review. §4 same-color collision rule now states explicitly that the less-full bucket waits globally, not just at the same stack. §5 generators now state that the output queue is hidden from the player (only count + facing direction visible). Both items were ambiguous in the prior version; the resolutions are confirmed game-mechanics facts, not interpretations.
 - **May 5, 2026 (second pass):** Added walls to §5 as a fifth reserve cell type. Walls are permanent obstacles — never removed, never pickable, block reachability propagation. Initially missed in the prior versions of the rules doc; identified from a level 38 screenshot during planning of the level-format issue. This is a real game mechanic, not a speculative addition.
 - **May 7, 2026:** Fixed reachability rule in §5. The previous wording ("reachable if at least one of its 4 neighbors is empty") was imprecise — it would mark isolated empties as reachable. Replaced with the correct graph-reachability formulation: the top edge is the source set, reachability propagates through chains of empty cells. Added a note that real Hex Fall levels never have initial empty reserve cells, so the imprecise rule and the correct rule agree on real published levels; the general form matters only for test/generated levels. Caught during commander review of the LEVEL_FORMAT.md worker deliverable, which produced an incorrect reachability walkthrough following the literal rule.
+- **May 13, 2026:** Major rules expansion driven by survey of Anıl Özmen's 100-level Paxie dataset (`survey_report.md`, May 13). Two new reserve cell types added to §5: **ice buckets** (frozen buckets that thaw after N player moves, present in 38 levels starting at level 39) and **pin blockers** (ray-shaped barriers destroyed by clearing the bucket behind their origin, present in 22 levels starting at level 64). §8 (determinism) extended to cover these mechanics — both are deterministic given the player's move sequence and the level definition. New §10 (Color palette) added enumerating the 17 short-code colors observed in real levels plus the full-name normalization mapping for 5 outlier levels (81-86) authored with a different editor build. Renumbered prior §10 (Open questions) → §11 and §11 (Revision history) → §12. The following Paxie mechanics are deliberately **not modeled**: `mysteryCollectors` (empty in all 100 levels), `tiedPairs` (empty in all 100 levels), `keyLocks` (present only in level 100), and `hexStackArea.tunnels` (empty in all 100 levels) — see `DECISIONS.md` May 13 entry for the rationale.

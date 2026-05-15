@@ -35,10 +35,11 @@ $$\langle S, A, O, P, \Omega, R, \gamma \rangle$$
 - $R : S \times A \times S \to \mathbb{R}$: reward function (§6, placeholder)
 - $\gamma$: discount factor — RL training detail, not specified here
 
-Two sources of partial observability (per `HEXFALL_RULES.md` §8):
+Three sources of partial observability (per `HEXFALL_RULES.md` §8):
 
-1. **Hidden bucket colors.** ?-buckets in the reserve hide their color until they become reachable. Color is fixed per-level (deterministic across replays) but unobservable until revealed.
-2. **Hidden slice composition.** Slices not satisfying the geometric visibility rules in `HEXFALL_RULES.md` §3 are hidden from the agent. Bottom-row stacks are fully visible; otherwise visibility depends on stack height vs. lower neighbor and grid position.
+1. **Hidden ?-bucket colors.** ?-buckets in the reserve hide their color until they become reachable. Color is fixed per-level (deterministic across replays) but unobservable until revealed.
+2. **Hidden ice bucket colors.** Ice buckets in the reserve hide their color until they thaw (when the level move counter reaches the bucket's thaw threshold). Color is fixed per-level, but unobservable until thaw. The thaw threshold itself is visible to the agent throughout.
+3. **Hidden slice composition.** Slices not satisfying the geometric visibility rules in `HEXFALL_RULES.md` §3 are hidden from the agent. Bottom-row stacks are fully visible; otherwise visibility depends on stack height vs. lower neighbor and grid position.
 
 One source of stochasticity:
 
@@ -68,11 +69,13 @@ A state consists of:
 ### 3.3 Reserve
 
 - **Grid topology**: square grid of cells (4-adjacency, per `HEXFALL_RULES.md` §5). Static positions.
-- **Per-cell content**: one of {empty, plain bucket, ?-bucket, generator, wall}.
+- **Per-cell content**: one of {empty, plain bucket, ?-bucket, generator, wall, ice bucket}, with cells optionally also covered by a pin ray (see below).
   - Plain bucket: color (already known to simulator).
-  - ?-bucket: color (fixed per-level, hidden from agent until revealed — see §4.3) and a "revealed" flag.
+  - ?-bucket: color (fixed per-level, hidden from agent until revealed — see §4.4) and a "revealed" flag.
   - Generator: facing direction, remaining count, predetermined output queue (color sequence).
   - Wall: no per-cell data. Walls are permanent obstacles, never picked, never removed, and block reachability through their cell (per `HEXFALL_RULES.md` §5).
+  - **Ice bucket**: color (fixed per-level, hidden from agent until thawed — see §4.4), thaw threshold (an integer ≥ 1, visible to the agent throughout), and a "thawed" flag. A frozen ice bucket blocks reachability through its cell, exactly like a plain bucket. A thawed ice bucket behaves identically to a plain bucket from that point on (per `HEXFALL_RULES.md` §5 ice bucket subsection).
+- **Pin rays** (zero or more per level): each pin is a tuple of (origin cell, direction, block-count, destroyed flag). The pin's ray is the set of cells starting at the origin and extending in the pin's direction for `block_count + 1` cells if `block_count ≥ 1`, or to the grid edge if `block_count = 0`. A pin's ray-cells are non-pickable, block reachability propagation along the ray (per `HEXFALL_RULES.md` §5 pin blocker subsection), and overlay any other cell content (a pin can sit atop a wall; the wall remains underneath after the pin is destroyed). A pin is destroyed when the cell directly opposite its origin (one step in the direction opposite the pin's facing) is emptied by a normal bucket pick.
 
 ### 3.4 RNG state
 
@@ -83,6 +86,14 @@ Other stochastic-looking elements (?-bucket colors, generator outputs) are **not
 ### 3.5 Quiescence flag
 
 A boolean indicating whether the simulator has finished applying all pending automatic updates and is awaiting a player action. The agent only acts at quiescent states (§5.4); non-quiescent states are intermediate and not observed.
+
+### 3.6 Move counter
+
+An integer ≥ 0 tracking the number of player picks executed in the episode so far. The move counter starts at 0 at level load and increments by 1 each time the action-application step (§5.4 step 1) fires — i.e., each time the agent selects a bucket and that bucket enters the buffer. Automatic updates do not increment the counter; only player actions do.
+
+The move counter is part of the simulator state because it gates ice bucket thaw events (per `HEXFALL_RULES.md` §5 ice bucket subsection): an ice bucket with thaw threshold $\tau$ thaws when the move counter reaches $\tau$. Including the counter in state preserves replay determinism — given the same level and the same action sequence, the same ice buckets thaw at the same steps.
+
+The move counter is **not** directly part of the agent observation. What the agent sees instead is, for each visible ice bucket, the **remaining moves until thaw** = $\max(0, \tau - \text{move\_counter})$ — see §4.4. This is the agent-relevant signal; the raw counter would be redundant.
 
 ---
 
@@ -113,11 +124,19 @@ The buffer is fully observable: slot occupancy, bucket colors, capacities, and c
 - ?-bucket cells: color hidden ("?") if `revealed = false`; color visible if `revealed = true`.
 - Generator cells: facing direction visible, remaining count visible. **Spec decision (flag in §10):** generator output queue (the colors of buckets it will produce next) is treated as **hidden** in the observation, since `HEXFALL_RULES.md` does not state that the player sees generator output ahead of time. Only the color of an already-produced bucket is visible.
 - Wall cells: visible as walls. No hidden data.
+- Ice bucket cells: visible as ice buckets, with two pieces of additional data exposed to the agent: (a) the **thaw threshold** $\tau$ (visible throughout), and (b) the **remaining moves until thaw** = $\max(0, \tau - \text{move\_counter})$, which decrements as the agent acts. Color is hidden ("?") while `thawed = false`; color becomes visible at the moment the bucket thaws.
+- Pin ray cells: visible as pin-occupied. The pin's origin cell, direction, and block-count are visible to the agent (so the agent can identify which cells are part of the same pin ray and which bucket will destroy it). Any cell-content underneath the pin (e.g., a wall co-located with the ray) is also visible.
 - Empty cells: visible as empty.
 
-### 4.4 ?-bucket revelation
+### 4.4 Color revelation (?-buckets and ice buckets)
 
-Per `HEXFALL_RULES.md` §5: a ?-bucket's color is revealed at the moment it becomes **reachable** (pickable), not when it is picked. Operationally, the simulator sets `revealed = true` for any ?-bucket transitioning from unreachable to reachable, and the observation function reflects this in the next observation.
+Two reserve-cell types hide their color until a reveal condition fires.
+
+**?-buckets.** Per `HEXFALL_RULES.md` §5: a ?-bucket's color is revealed at the moment it becomes **reachable** (pickable), not when it is picked. Operationally, the simulator sets `revealed = true` for any ?-bucket transitioning from unreachable to reachable, and the observation function reflects this in the next observation.
+
+**Ice buckets.** Per `HEXFALL_RULES.md` §5 ice bucket subsection: an ice bucket's color is revealed at the moment it **thaws** — i.e., when the move counter (§3.6) reaches the bucket's thaw threshold $\tau$. Operationally, after each action-application step (§5.4 step 1) the simulator scans all frozen ice buckets and thaws any whose threshold is now met, setting `thawed = true` and revealing the color in the next observation. The thaw check fires regardless of reachability — an unreachable ice bucket can thaw, and its color becomes visible at thaw even though it remains unpickable until reachable.
+
+Both reveals are one-way: once revealed, the color stays visible for the remainder of the episode.
 
 ### 4.5 Reachability information
 
@@ -149,11 +168,11 @@ The action space has fixed size per level. Across levels, the size varies — ge
 
 An action $(i, j)$ is **legal** in state $s_t$ iff:
 
-1. Cell $(i, j)$ contains a plain bucket or a ?-bucket (not empty, not a generator, not a wall), **and**
-2. Cell $(i, j)$ is reachable per `HEXFALL_RULES.md` §5, **and**
+1. Cell $(i, j)$ contains a plain bucket, a ?-bucket, or a **thawed** ice bucket (not empty, not a generator, not a wall, not a frozen ice bucket, not a pin ray cell), **and**
+2. Cell $(i, j)$ is reachable per `HEXFALL_RULES.md` §5 (including the pin-ray blocking rule), **and**
 3. The buffer has at least one empty slot.
 
-Picking a generator is never legal (generators are not buckets). Picking a wall is never legal (walls are obstacles, not buckets). Picking an empty cell is never legal. Picking an unreachable cell is never legal. Picking when the buffer is full is never legal.
+Picking a generator is never legal (generators are not buckets). Picking a wall is never legal (walls are obstacles, not buckets). Picking an empty cell is never legal. Picking an unreachable cell is never legal. Picking a frozen ice bucket is never legal (the bucket is unusable until thaw). Picking a cell covered by a pin ray is never legal (the cell is non-pickable for the pin's lifetime). Picking when the buffer is full is never legal.
 
 ### 5.3 No-op
 
@@ -163,16 +182,22 @@ There is no no-op action. The agent only chooses actions at quiescent states (§
 
 A single MDP step proceeds as follows:
 
-1. **Action application.** The selected bucket is removed from the reserve and placed into an empty buffer slot. Slot choice is irrelevant per `HEXFALL_RULES.md` §4 (slot ordering does not matter).
+1. **Action application.** The selected bucket is removed from the reserve and placed into an empty buffer slot. Slot choice is irrelevant per `HEXFALL_RULES.md` §4 (slot ordering does not matter). The move counter (§3.6) increments by 1.
 2. **Automatic updates.** The simulator runs automatic updates until quiescence. Updates fire in the following order each tick (spec-level decision; see §10):
-   1. **Buffer pulls.** Each bucket in the buffer attempts to pull a matching top slice from the bottom row. Same-color collision rule applies (`HEXFALL_RULES.md` §4): the fuller bucket of a same-color pair pulls before the less-full one. Multiple distinct-color buckets pulling from different stacks all pull on the same tick.
-   2. **Bucket fill checks.** Any bucket that reached capacity leaves the buffer, freeing its slot.
-   3. **Stack clear checks.** Any bottom-row stack that is now empty triggers a fall: one of its (up to two) upper neighbors is chosen uniformly at random (using the RNG in §3.4) and falls into the empty position.
-   4. **Generator firing.** Any generator whose facing cell is now empty (and which has remaining count > 0) produces its next bucket into that cell, decrementing its count.
-   5. **Reachability recomputation.** Reachability is recomputed; any newly-reachable ?-bucket has its color revealed.
+   1. **Ice thaw checks.** Any frozen ice bucket whose thaw threshold equals the current move counter is thawed (`thawed = true`, color revealed). Thawing happens at the start of the first tick after an action — it does not consume RNG and is deterministic.
+   2. **Buffer pulls.** Each bucket in the buffer attempts to pull a matching top slice from the bottom row. Same-color collision rule applies (`HEXFALL_RULES.md` §4): the fuller bucket of a same-color pair pulls before the less-full one. Multiple distinct-color buckets pulling from different stacks all pull on the same tick.
+   3. **Bucket fill checks.** Any bucket that reached capacity leaves the buffer, freeing its slot.
+   4. **Stack clear checks.** Any bottom-row stack that is now empty triggers a fall: one of its (up to two) upper neighbors is chosen uniformly at random (using the RNG in §3.4) and falls into the empty position.
+   5. **Generator firing.** Any generator whose facing cell is now empty (and which has remaining count > 0) produces its next bucket into that cell, decrementing its count.
+   6. **Reachability recomputation.** Reachability is recomputed; any newly-reachable ?-bucket has its color revealed.
+   7. **Pin destruction checks.** For each undestroyed pin, the simulator checks whether the pin's destruction cell (one step from the origin in the direction *opposite* the pin's facing) is currently empty. If so, the pin is destroyed: all cells in its ray transition to empty. Pin destruction within a tick may cascade — if a destroyed pin's ray-cells reveal another pin's destruction cell as empty, the second pin destroys on the same tick (the simulator iterates the pin-destruction check until no further pins destroy on this tick). Pin destruction is followed by another reachability recomputation if any pin destroyed (re-run step 2.vi).
 3. **Quiescence check.** If any update fired in step 2, repeat step 2. Otherwise the state is quiescent and the agent observes and acts again.
 
-The transition is stochastic only via step 2.iii (fall direction).
+The transition is stochastic only via step 2.iv (fall direction). Ice thaw (step 2.i), pin destruction (step 2.vii), and all other steps are deterministic.
+
+**Note on ice thaw timing.** Thaw is checked once per tick at the start of the tick (step 2.i). A thaw event itself counts as an update, so the quiescence loop continues — but since thaw does not directly trigger pulls, falls, or generator firings on its own (it only changes a bucket's `thawed` flag and reveals its color), the typical effect is that thaw fires once at the start of a tick and then later updates proceed normally. The agent observes the post-thaw state.
+
+**Note on pin destruction timing and refill protection.** Pin destruction is a quiescence-driven check, not an action-driven one (step 2.vii, not step 1). The destruction cell must be **empty at the moment of the check** — if a generator's firing in step 2.v has just refilled the destruction cell with a freshly produced bucket, the pin is *not* destroyed on that tick. The pin survives until the destruction cell ends a tick empty. By Paxie level-construction discipline, the destruction cell of a pin is never itself a wall or a generator at level start (i.e., the destruction cell starts as a pickable bucket: plain, ?, or ice). A generator placed *elsewhere* that fires into the destruction cell is allowed; such configurations make the pin effectively permanent unless the generator runs out and all generator-produced buckets in the destruction cell are subsequently cleared by player picks.
 
 **Deterministic tie-breaks.** Two situations require a tie-break that the rules doc and earlier spec versions did not pin down. The simulator must use these specific rules to preserve replay determinism:
 
@@ -247,7 +272,7 @@ The telemetry exists because fallback firings are signals of bugged levels (espe
 
 A trajectory is reproducible iff the following are recorded:
 
-- The level definition (deterministic per `HEXFALL_RULES.md` §8: hex layout, slice composition, reserve layout, generator outputs, ?-bucket colors).
+- The level definition (deterministic per `HEXFALL_RULES.md` §8: hex layout, slice composition, reserve layout, generator outputs, ?-bucket colors, ice bucket colors and thaw thresholds, pin positions and directions and block counts).
 - The RNG seed for fall direction (§3.4).
 - The sequence of agent actions.
 
@@ -310,3 +335,4 @@ These items are not blocking for the simulator implementation. They will be reso
 - **May 5, 2026 (second pass):** Added walls as a fifth reserve cell type (§3.3, §4.3, §5.2). Walls are permanent obstacles, never picked, never removed, and block reachability through their cell. Initially missed in both `HEXFALL_RULES.md` and this spec; identified from a level 38 screenshot during planning of the level-format issue. Action legality (§5.2) explicitly excludes walls.
 - **May 7, 2026:** Added "Initial load" paragraph to §5.4 clarifying that level loading runs the same automatic-update loop until quiescence, with the empty-facing-cell guard applying on load (a generator does not fire at load if its facing cell is occupied). Resolves an open question flagged in the LEVEL_FORMAT.md worker deliverable. Real Hex Fall levels never have initial empty reserve cells, so no generator fires at load on real levels; the clarification matters for hand-built and generated test levels.
 - **May 9, 2026:** Added "Deterministic tie-breaks" paragraph to §5.4 documenting two rules locked during simulator implementation: (1) when one bucket has multiple matching stacks on a tick, pull from smallest-col then smallest-row; (2) when same-color buckets have tied fills, lowest-indexed buffer slot wins the same-color collision priority. Both rules preserve replay determinism without consuming RNG. Flowed back from simulator-implementation worker review (issue #3 closure).
+- **May 13, 2026:** Major spec extension to accommodate Paxie format adoption (`DECISIONS.md` May 13 entry). Two new state components and two new mechanics added in parallel with `HEXFALL_RULES.md` §5 expansion. §2 now lists three sources of partial observability (added ice bucket colors). §3.3 reserve per-cell content extended to include ice buckets and pin rays. New §3.6 introduces a move counter as a first-class state component required by ice bucket thawing. §4.3 visible-reserve rules extended for ice and pin cells. §4.4 renamed to "Color revelation (?-buckets and ice buckets)" and extended to cover ice thaw timing. §5.2 action legality updated to exclude frozen ice buckets and pin ray cells. §5.4 transition updated: action application step now increments the move counter; automatic-updates loop gains two new sub-steps — ice thaw checks (step 2.i, start of tick) and pin destruction checks (step 2.vii, end of tick after reachability recomputation). The fall-direction stochasticity is now step 2.iv. Pin destruction is quiescence-driven (checked when the destruction cell ends a tick empty), not action-driven — a generator firing in step 2.v can refill the destruction cell on the same tick and save the pin. Cascading pin destruction within a single tick is supported. §8 determinism list extended for ice and pin level-definition components.

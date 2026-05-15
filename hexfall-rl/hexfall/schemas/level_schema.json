@@ -1,127 +1,209 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hexfall-rl/level.schema.json",
-  "title": "HexFall Level",
-  "description": "JSON Schema for Hex Fall level files. See LEVEL_FORMAT.md for the full human-readable spec.",
+  "$id": "https://hexfall-rl/paxie_level.schema.json",
+  "title": "Paxie Hex Fall Level (external format)",
+  "description": "JSON Schema for level files in the Paxie editor format. Derived empirically from the 100-level dataset survey (see CLASSIFIED.paxie_data/survey_report.md). This is the format produced by Anıl's level editor; the simulator's native format is described in level_schema.json. Fields marked optional are present in only a subset of surveyed levels; the survey's coverage percentages are noted inline where relevant.",
   "type": "object",
-  "required": ["meta", "field", "buffer", "reserve"],
+  "required": [
+    "levelNumber",
+    "levelVersionCode",
+    "collectorArea",
+    "hexStackArea",
+    "editorMeta"
+  ],
   "additionalProperties": false,
 
   "properties": {
 
-    "meta": {
+    "levelNumber": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "1-based level index. Observed range 1–100 in the dataset; no upper bound enforced here."
+    },
+
+    "levelVersionCode": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Editor-side format version. All 100 surveyed levels carry value 1; future exports may bump this."
+    },
+
+    "collectorArea": {
       "type": "object",
-      "required": ["id", "name", "version", "color_count"],
+      "description": "The collector grid (target area) plus all of its mechanic-specific overlays. Each mechanic occupies its own array; the cells are not unified under a single 'cells' list.",
+      "required": ["gridWidth", "gridHeight", "singleBlockCollectors"],
       "additionalProperties": false,
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique level identifier. Lowercase kebab-case recommended.",
-          "minLength": 1
+        "gridWidth":  { "type": "integer", "minimum": 1, "description": "Observed range 5–8." },
+        "gridHeight": { "type": "integer", "minimum": 1, "description": "Observed range 4–8." },
+
+        "singleBlockCollectors": {
+          "type": "array",
+          "description": "Plain colored collector cells. Present in 100/100 levels.",
+          "items": { "$ref": "#/definitions/single_block_collector" }
         },
-        "name": {
-          "type": "string",
-          "description": "Human-readable display name.",
-          "minLength": 1
+        "iceCollectors": {
+          "type": "array",
+          "description": "Ice-encased collector cells; revealed colour and capacity-to-thaw. Non-empty in 38/100 surveyed levels (first appearance at level 39).",
+          "items": { "$ref": "#/definitions/ice_collector" }
         },
-        "version": {
-          "type": "integer",
-          "description": "Format version. Must be 1 for this schema.",
-          "const": 1
+        "pinBlockers": {
+          "type": "array",
+          "description": "Directional pin obstacles. Non-empty in 22/100 surveyed levels (first appearance at level 64).",
+          "items": { "$ref": "#/definitions/pin_blocker" }
         },
-        "color_count": {
-          "type": "integer",
-          "description": "Number of distinct colors used in the level. Must match actual distinct color count across field slices and reserve buckets.",
-          "minimum": 1
+        "mysteryCollectors": {
+          "type": "array",
+          "description": "Reserved mechanic — present as an empty array in 92/100 surveyed levels but never populated. Item schema unknown from the dataset; accept any objects.",
+          "items": { "type": "object" }
         },
-        "notes": {
-          "type": "string",
-          "description": "Optional freeform notes. Not read by the simulator."
+        "woodBoxCollectors": {
+          "type": "array",
+          "description": "Question-bucket equivalents: a collector cell whose colour is hidden until revealed. Non-empty in 50/100 surveyed levels.",
+          "items": { "$ref": "#/definitions/wood_box_collector" }
+        },
+        "tunnels": {
+          "type": "array",
+          "description": "Generator-equivalent tunnels: emit a queued sequence of coloured blocks in a fixed direction. Non-empty in 56/100 surveyed levels.",
+          "items": { "$ref": "#/definitions/ca_tunnel" }
+        },
+        "deadCells": {
+          "type": "array",
+          "description": "Wall / blocked cells in the collector grid. Non-empty in 97/100 surveyed levels.",
+          "items": { "$ref": "#/definitions/dead_cell" }
+        },
+        "keyLocks": {
+          "type": "array",
+          "description": "Key-lock pairs (a key at one location unlocks a gate at another). Non-empty in only 1/100 surveyed levels (level 100); appears to be a late-game mechanic.",
+          "items": { "$ref": "#/definitions/key_lock" }
+        },
+        "tiedPairs": {
+          "type": ["array", "null"],
+          "description": "Reserved mechanic — present as either null or an empty array in 21/100 surveyed levels; never populated. Item schema unknown.",
+          "items": { "type": "object" }
         }
       }
     },
 
-    "field": {
+    "hexStackArea": {
       "type": "object",
-      "required": ["stacks"],
+      "description": "The hex-field where stacks of coloured slices live; the source area the player drains into collectorArea.",
+      "required": ["gridWidth", "gridHeight", "stacks"],
       "additionalProperties": false,
       "properties": {
+        "gridWidth": {
+          "type": "integer",
+          "description": "Always 13 across all 100 surveyed levels.",
+          "minimum": 1
+        },
+        "gridHeight": {
+          "type": "integer",
+          "description": "Observed range 8–33; the field can scroll vertically.",
+          "minimum": 1
+        },
         "stacks": {
           "type": "array",
-          "description": "List of non-empty hex stacks in odd-r offset coordinates.",
-          "items": {
-            "type": "object",
-            "required": ["col", "row", "slices"],
-            "additionalProperties": false,
-            "properties": {
-              "col": {
-                "type": "integer",
-                "minimum": 0,
-                "description": "Column index (odd-r offset, 0-based, left-to-right)."
-              },
-              "row": {
-                "type": "integer",
-                "minimum": 0,
-                "description": "Row index (odd-r offset, 0-based, top-to-bottom)."
-              },
-              "slices": {
-                "type": "array",
-                "description": "Slice colors, ordered top-to-bottom (index 0 = top slice = next consumed).",
-                "items": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "minItems": 1
-              }
-            }
-          }
-        }
-      }
-    },
-
-    "buffer": {
-      "type": "object",
-      "required": ["slots", "bucket_capacity"],
-      "additionalProperties": false,
-      "properties": {
-        "slots": {
-          "type": "integer",
-          "description": "Number of buffer slots. Standard Hex Fall value is 5.",
-          "minimum": 1
+          "description": "Non-empty stacks placed in the hex field.",
+          "items": { "$ref": "#/definitions/stack" }
         },
-        "bucket_capacity": {
-          "type": "integer",
-          "description": "Number of slices to fill one bucket. Default is 25.",
-          "minimum": 1
-        }
-      }
-    },
-
-    "reserve": {
-      "type": "object",
-      "required": ["rows", "cols", "cells"],
-      "additionalProperties": false,
-      "properties": {
-        "rows": {
-          "type": "integer",
-          "description": "Number of rows in the reserve grid.",
-          "minimum": 1
-        },
-        "cols": {
-          "type": "integer",
-          "description": "Number of columns in the reserve grid.",
-          "minimum": 1
-        },
-        "cells": {
+        "tunnels": {
           "type": "array",
-          "description": "Occupied reserve cells. Cells not listed are implicitly empty.",
+          "description": "Always present as an empty array in 89/100 surveyed levels; never observed populated. Treat as vestigial unless future levels populate it. If non-empty, expected to follow the same shape as collectorArea.tunnels.",
+          "items": { "$ref": "#/definitions/ca_tunnel" }
+        }
+      }
+    },
+
+    "editorMeta": {
+      "type": "object",
+      "description": "Editor-side parameters and generation knobs. Some fields are universal; others appear only in subsets of levels.",
+      "required": [
+        "totalBlocks",
+        "colorCount",
+        "maxColorsPerStack",
+        "heightMin",
+        "heightMax",
+        "randomness",
+        "verticalPercent",
+        "horizontalPercent",
+        "mysteryPercent"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "totalBlocks": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total slice count across the hex field. Observed range 144–1272."
+        },
+        "colorCount": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of distinct colours declared by the editor. Observed range 2–6. Note: 2 surveyed levels (87, 91) have actual distinct colours exceeding this declared value — loaders should warn rather than reject."
+        },
+        "maxColorsPerStack": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Editor knob: ceiling on distinct colours per stack. Observed values 1 or 2."
+        },
+        "heightMin": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Minimum stack height the generator was configured to produce. Observed 3–9."
+        },
+        "heightMax": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum stack height the generator was configured to produce. Observed 3–9."
+        },
+        "randomness": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Editor randomness knob in [0, 1]. Observed 0.0–0.65."
+        },
+        "verticalPercent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Vertical-pattern emphasis as a percentage. Observed 0.0–100.0 (median 0)."
+        },
+        "horizontalPercent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Horizontal-pattern emphasis as a percentage. Observed 0.0–44.0 (median 0)."
+        },
+        "mysteryPercent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Mystery-collector ratio. Always 0.0 in the surveyed dataset; matches the always-empty mysteryCollectors array."
+        },
+        "clusteringEnabled": {
+          "type": "boolean",
+          "description": "Whether the editor's clustering pass was enabled during generation. Present in 89/100 levels."
+        },
+        "clusteringPercent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Strength of the clustering pass when enabled. Present in 89/100 levels; observed 0.0–100.0."
+        },
+        "colorsPerStackRatios": {
+          "type": "array",
+          "description": "Ratio knobs for how many distinct colours per stack (each entry corresponds to a colour-count bucket). Present in 68/100 levels; all observed lists have length 1; values 0.0–100.0.",
+          "items": { "type": "number" }
+        },
+        "zoneCount": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of zones (palette partitions) the generator was configured with. Present in 57/100 levels; observed 1–5."
+        },
+        "zoneColors": {
+          "type": "array",
+          "description": "Per-zone palette assignment, ordered by zone index. Present in 10/100 levels — always as list_of_lists (each inner list is the palette for that zone). Observed: 3–5 zones, 2–6 colours per zone.",
           "items": {
-            "oneOf": [
-              { "$ref": "#/definitions/plain_bucket_cell" },
-              { "$ref": "#/definitions/question_bucket_cell" },
-              { "$ref": "#/definitions/generator_cell" },
-              { "$ref": "#/definitions/wall_cell" }
-            ]
+            "type": "array",
+            "items": { "$ref": "#/definitions/color_token" }
           }
         }
       }
@@ -131,107 +213,150 @@
 
   "definitions": {
 
-    "cell_base": {
+    "color_token": {
+      "type": "string",
+      "description": "A colour code. Two parallel encodings exist in the dataset: short codes (e.g. 'y', 'w', 'r', 'dg', 'db', 'pk', 'dgr') and full-name aliases (e.g. 'Yellow', 'DarkRed', 'OliveGreen'). Each level uses exactly one encoding throughout (stacks, collectors, tunnel queues, zoneColors); the two never mix within a level. 95 levels use short codes; 5 levels (81, 82, 83, 85, 86) use full names. Translators SHOULD canonicalise to a single encoding (recommended: short codes).",
+      "pattern": "^[A-Za-z]{1,20}$"
+    },
+
+    "direction": {
+      "type": "string",
+      "enum": ["Up", "Down", "Left", "Right"],
+      "description": "Capitalised direction string used by tunnels and pinBlockers."
+    },
+
+    "grid_pos": {
       "type": "object",
-      "required": ["row", "col", "type"],
+      "description": "Integer (x, y) position inside whichever grid the parent belongs to.",
+      "required": ["x", "y"],
       "properties": {
-        "row": {
+        "x": { "type": "integer", "minimum": 0 },
+        "y": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "single_block_collector": {
+      "type": "object",
+      "required": ["x", "y", "color"],
+      "additionalProperties": false,
+      "properties": {
+        "x":     { "type": "integer", "minimum": 0 },
+        "y":     { "type": "integer", "minimum": 0 },
+        "color": { "$ref": "#/definitions/color_token" }
+      }
+    },
+
+    "ice_collector": {
+      "type": "object",
+      "required": ["x", "y", "iceCapacity", "hiddenColor"],
+      "additionalProperties": false,
+      "properties": {
+        "x":           { "type": "integer", "minimum": 0 },
+        "y":           { "type": "integer", "minimum": 0 },
+        "iceCapacity": {
           "type": "integer",
-          "minimum": 0,
-          "description": "Row index within the reserve grid (0-based, top-to-bottom)."
+          "minimum": 1,
+          "description": "Number of matching deliveries needed to break the ice. Observed range 3–22 (mean ~10)."
         },
-        "col": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Column index within the reserve grid (0-based, left-to-right)."
-        },
-        "type": {
-          "type": "string"
+        "hiddenColor": {
+          "$ref": "#/definitions/color_token",
+          "description": "The colour underneath the ice; revealed once the ice is broken."
         }
       }
     },
 
-    "plain_bucket_cell": {
-      "allOf": [
-        { "$ref": "#/definitions/cell_base" }
-      ],
+    "pin_blocker": {
       "type": "object",
-      "required": ["row", "col", "type", "color"],
+      "required": ["x", "y", "direction"],
       "additionalProperties": false,
       "properties": {
-        "row":   { "type": "integer", "minimum": 0 },
-        "col":   { "type": "integer", "minimum": 0 },
-        "type":  { "type": "string", "const": "plain_bucket" },
-        "color": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Bucket color. Visible to agent immediately."
-        }
-      }
-    },
-
-    "question_bucket_cell": {
-      "allOf": [
-        { "$ref": "#/definitions/cell_base" }
-      ],
-      "type": "object",
-      "required": ["row", "col", "type", "color"],
-      "additionalProperties": false,
-      "properties": {
-        "row":   { "type": "integer", "minimum": 0 },
-        "col":   { "type": "integer", "minimum": 0 },
-        "type":  { "type": "string", "const": "question_bucket" },
-        "color": {
-          "type": "string",
-          "minLength": 1,
-          "description": "True bucket color. Hidden from agent until bucket becomes reachable (HEXFALL_MDP_SPEC §4.3–4.4)."
-        }
-      }
-    },
-
-    "generator_cell": {
-      "allOf": [
-        { "$ref": "#/definitions/cell_base" }
-      ],
-      "type": "object",
-      "required": ["row", "col", "type", "facing", "remaining", "queue"],
-      "additionalProperties": false,
-      "properties": {
-        "row":  { "type": "integer", "minimum": 0 },
-        "col":  { "type": "integer", "minimum": 0 },
-        "type": { "type": "string", "const": "generator" },
-        "facing": {
-          "type": "string",
-          "enum": ["up", "down", "left", "right"],
-          "description": "Direction the generator faces. The cell in this direction receives produced buckets."
-        },
-        "remaining": {
+        "x":         { "type": "integer", "minimum": 0 },
+        "y":         { "type": "integer", "minimum": 0 },
+        "direction": { "$ref": "#/definitions/direction" },
+        "blockCount": {
           "type": "integer",
           "minimum": 0,
-          "description": "Number of buckets still to be produced. Must equal queue.length. JSON Schema cannot enforce cross-field equality; the simulator loader must assert remaining == len(queue) at load time."
-        },
-        "queue": {
+          "description": "Optional. Observed in 9 of the surveyed pin blockers; values 0–3. Many pinBlocker entries omit this field entirely."
+        }
+      }
+    },
+
+    "wood_box_collector": {
+      "type": "object",
+      "required": ["x", "y", "hiddenColor"],
+      "additionalProperties": false,
+      "properties": {
+        "x":           { "type": "integer", "minimum": 0 },
+        "y":           { "type": "integer", "minimum": 0 },
+        "hiddenColor": {
+          "$ref": "#/definitions/color_token",
+          "description": "The colour inside the wood box; the editor analogue of a 'question bucket'."
+        }
+      }
+    },
+
+    "ca_tunnel": {
+      "type": "object",
+      "description": "Generator-style tunnel: at position (x, y) facing `direction`, producing the queued sequence of coloured blocks. The same shape is reused for hexStackArea.tunnels (which is always empty in this dataset).",
+      "required": ["x", "y", "direction", "collectorQueue"],
+      "additionalProperties": false,
+      "properties": {
+        "x":         { "type": "integer", "minimum": 0 },
+        "y":         { "type": "integer", "minimum": 0 },
+        "direction": { "$ref": "#/definitions/direction" },
+        "collectorQueue": {
           "type": "array",
-          "description": "Colors of buckets to be produced in order (index 0 = next). Hidden from agent; only remaining count and facing are observable.",
+          "description": "Ordered queue of coloured blocks to emit. Index 0 = next emitted. Observed lengths 2–7 (median 4).",
           "items": {
-            "type": "string",
-            "minLength": 1
+            "type": "object",
+            "required": ["color"],
+            "additionalProperties": false,
+            "properties": {
+              "color": { "$ref": "#/definitions/color_token" }
+            }
           }
         }
       }
     },
 
-    "wall_cell": {
-      "allOf": [
-        { "$ref": "#/definitions/cell_base" }
-      ],
+    "dead_cell": {
       "type": "object",
-      "required": ["row", "col", "type"],
+      "required": ["x", "y"],
       "additionalProperties": false,
       "properties": {
-        "row":  { "type": "integer", "minimum": 0 },
-        "col":  { "type": "integer", "minimum": 0 },
-        "type": { "type": "string", "const": "wall" }
+        "x": { "type": "integer", "minimum": 0 },
+        "y": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "key_lock": {
+      "type": "object",
+      "description": "Key + lock pair. Picking up the key at (keyX, keyY) unlocks the gate at (lockX, lockY). Only observed in level 100 of the surveyed dataset.",
+      "required": ["color", "keyX", "keyY", "lockX", "lockY"],
+      "additionalProperties": false,
+      "properties": {
+        "color": { "$ref": "#/definitions/color_token" },
+        "keyX":  { "type": "integer", "minimum": 0 },
+        "keyY":  { "type": "integer", "minimum": 0 },
+        "lockX": { "type": "integer", "minimum": 0 },
+        "lockY": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "stack": {
+      "type": "object",
+      "description": "A vertical stack of coloured slices placed at (x, y) on the hexStackArea grid.",
+      "required": ["x", "y", "colors"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "integer", "minimum": 0 },
+        "y": { "type": "integer", "minimum": 0 },
+        "colors": {
+          "type": "array",
+          "description": "Slice colours, ordered from one end of the stack to the other. Observed stack heights 3–9 (mean ~6).",
+          "items": { "$ref": "#/definitions/color_token" },
+          "minItems": 1
+        }
       }
     }
 
