@@ -2,11 +2,21 @@ import json
 import warnings
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from hexfall.env import HexFallEnv
 from hexfall.game import legal_actions_mask
 from hexfall.level_loader import load_level
+
+
+def _obs_equal(a: dict, b: dict) -> bool:
+    if a.keys() != b.keys():
+        return False
+    for k in a:
+        if not np.array_equal(a[k], b[k]):
+            return False
+    return True
 
 LEVELS_DIR = Path(__file__).parent.parent / "levels"
 TINY = LEVELS_DIR / "tiny_solvable.json"
@@ -65,8 +75,8 @@ def test_action_mask_dimension_and_consistency():
     assert len(obs["action_mask"]) == rows * cols
 
     expected_2d = legal_actions_mask(env._state)
-    expected_flat = [expected_2d[r][c] for r in range(rows) for c in range(cols)]
-    assert obs["action_mask"] == expected_flat
+    expected_flat = [int(expected_2d[r][c]) for r in range(rows) for c in range(cols)]
+    assert list(obs["action_mask"]) == expected_flat
 
 
 def test_action_index_decoding():
@@ -99,30 +109,35 @@ def test_illegal_action_raises_value_error():
 # Observation: move counter and pins
 # ---------------------------------------------------------------------------
 
-def test_obs_includes_move_counter():
+def test_move_counter_not_in_obs():
+    # Per HEXFALL_MDP_SPEC §3.6 the raw move counter is NOT part of the agent
+    # observation. Increment behavior is asserted in test_game.py.
     env = HexFallEnv(TINY, seed=0)
     obs, _ = env.reset()
-    assert obs["move_counter"] == 0
-    obs2, _, _, _, _ = env.step(0)
-    assert obs2["move_counter"] == 1
+    assert "move_counter" not in obs
 
 
-def test_obs_includes_pins_list():
+def test_obs_includes_pins_arrays():
     env, obs = _open_env(LEVELS_DIR / "pin_test.json")
-    assert len(obs["pins"]) == 2
-    for pin in obs["pins"]:
-        assert "origin" in pin and "direction" in pin and "block_count" in pin
+    assert obs["pins_destroyed"].shape == (2,)
+    assert int((obs["pins_destroyed"] == 0).sum()) == 2
+    # Required parallel arrays all present and same length.
+    for k in ("pins_origin_row", "pins_origin_col", "pins_direction",
+              "pins_block_count", "pins_destroyed"):
+        assert obs[k].shape == (2,)
 
 
-def test_destroyed_pins_not_in_observation():
+def test_destroyed_pins_marked_in_observation():
     env, obs = _open_env(LEVELS_DIR / "pin_test.json")
-    assert len(obs["pins"]) == 2
+    assert int((obs["pins_destroyed"] == 0).sum()) == 2
     # The (1, 2) pick destroys both pins (cascade) and wins the level.
     legal = [i for i, m in enumerate(obs["action_mask"]) if m]
     assert legal == [legal_actions_mask(env._state)[1].index(True) + 1 * env._reserve_cols]
     obs2, _, terminated, _, _ = env.step(legal[0])
     assert terminated
-    assert obs2["pins"] == []
+    # Slots are not freed: shape stays (2,), but both pins are destroyed.
+    assert obs2["pins_destroyed"].shape == (2,)
+    assert int(obs2["pins_destroyed"].sum()) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -131,56 +146,52 @@ def test_destroyed_pins_not_in_observation():
 
 def test_ice_bucket_frozen_hides_color():
     env, obs = _open_env(LEVELS_DIR / "ice_test.json")
-    ice0 = obs["reserve"][0][1]
-    assert ice0["type"] == "ice_bucket_frozen"
-    assert ice0["color"] == "?"
-    assert ice0["thaw_threshold"] == 1
-    assert ice0["remaining_thaw_moves"] == 1
+    assert int(obs["reserve_cell_type"][0, 1]) == env.CELL_TYPE_IDS["ice_bucket_frozen"]
+    assert int(obs["reserve_color"][0, 1]) == env.HIDDEN_COLOR_ID
+    assert int(obs["reserve_thaw_threshold"][0, 1]) == 1
+    assert int(obs["reserve_remaining_thaw"][0, 1]) == 1
 
 
 def test_ice_bucket_remaining_decrements_with_move_counter():
     env, obs = _open_env(LEVELS_DIR / "ice_test.json")
-    assert obs["reserve"][0][2]["remaining_thaw_moves"] == 2  # threshold 2, counter 0
+    assert int(obs["reserve_remaining_thaw"][0, 2]) == 2  # threshold 2, counter 0
     obs2, _, _, _, _ = env.step(0)  # pick (0, 0) plain
     # (0, 1) was threshold 1 → thawed now.
-    assert obs2["reserve"][0][1]["type"] == "ice_bucket_thawed"
-    assert obs2["reserve"][0][1]["color"] == "r"
+    assert int(obs2["reserve_cell_type"][0, 1]) == env.CELL_TYPE_IDS["ice_bucket_thawed"]
+    assert int(obs2["reserve_color"][0, 1]) == env.color_to_id["r"]
     # (0, 2) was threshold 2 → still frozen, remaining = 1.
-    assert obs2["reserve"][0][2]["type"] == "ice_bucket_frozen"
-    assert obs2["reserve"][0][2]["remaining_thaw_moves"] == 1
+    assert int(obs2["reserve_cell_type"][0, 2]) == env.CELL_TYPE_IDS["ice_bucket_frozen"]
+    assert int(obs2["reserve_remaining_thaw"][0, 2]) == 1
 
 
 def test_ice_bucket_thaws_reveals_color():
     env, obs = _open_env(LEVELS_DIR / "ice_test.json")
     env.step(0)
-    obs2 = env._get_obs()
-    assert obs2["reserve"][0][1]["color"] == "r"
-    assert obs2["reserve"][0][1]["type"] == "ice_bucket_thawed"
+    obs2 = env.get_obs()
+    assert int(obs2["reserve_color"][0, 1]) == env.color_to_id["r"]
+    assert int(obs2["reserve_cell_type"][0, 1]) == env.CELL_TYPE_IDS["ice_bucket_thawed"]
 
 
 # ---------------------------------------------------------------------------
 # Observation: pin overlay encoding
 # ---------------------------------------------------------------------------
 
-def test_pin_ray_cell_encoded_with_underneath():
+def test_pin_ray_overlay_with_underneath():
     env, obs = _open_env(LEVELS_DIR / "pin_test.json")
     # Reserve (1, 0) is in pin A's ray and has a plain red bucket underneath.
-    cell = obs["reserve"][1][0]
-    assert cell["type"] == "pin_ray"
-    assert cell["underneath"]["type"] == "plain_bucket"
-    assert cell["underneath"]["color"] == "r"
+    assert int(obs["reserve_pin_ray_overlay"][1, 0]) == 1
+    assert int(obs["reserve_cell_type"][1, 0]) == env.CELL_TYPE_IDS["plain_bucket"]
+    assert int(obs["reserve_color"][1, 0]) == env.color_to_id["r"]
 
 
-def test_pin_ray_cell_overlay_clears_after_destruction():
+def test_pin_ray_overlay_clears_after_destruction():
     env, obs = _open_env(LEVELS_DIR / "pin_test.json")
     # Pick (1, 2) → destroys both pins via cascade.
     flat = 1 * env._reserve_cols + 2
     env.step(flat)
-    obs2 = env._get_obs()
-    # No cells should report pin_ray type anymore.
-    for r in range(env._reserve_rows):
-        for c in range(env._reserve_cols):
-            assert obs2["reserve"][r][c]["type"] != "pin_ray"
+    obs2 = env.get_obs()
+    # No cells should report pin_ray overlay anymore.
+    assert int(obs2["reserve_pin_ray_overlay"].sum()) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +230,21 @@ def _vis_path(tmp_path: Path, stacks: list[dict], reserve_cells: list[dict],
     return _write(tmp_path, data, name)
 
 
+def _vis_stack(env: HexFallEnv, obs: dict, col: int, row: int) -> list[str]:
+    """Decode dense field_visible[row, col, :height] back to label strings."""
+    height = int(obs["field_heights"][row, col])
+    out: list[str] = []
+    for d in range(height):
+        cid = int(obs["field_visible"][row, col, d])
+        if cid == env.HIDDEN_COLOR_ID:
+            out.append("?")
+        elif cid == env.NO_COLOR_ID:
+            out.append("?")
+        else:
+            out.append(env.id_to_color[cid])
+    return out
+
+
 def test_visibility_top_slice_only_when_covered(tmp_path):
     path = _vis_path(
         tmp_path,
@@ -233,7 +259,7 @@ def test_visibility_top_slice_only_when_covered(tmp_path):
         gridWidth=2,
     )
     env, obs = _open_env(path)
-    vis = obs["field_visible"][(0, 0)]
+    vis = _vis_stack(env, obs, 0, 0)
     assert vis[0] == "r"
     assert vis[1:] == ["?", "?", "?"]
 
@@ -251,7 +277,7 @@ def test_visibility_bottom_row_fully_visible(tmp_path):
         gridWidth=4,
     )
     env, obs = _open_env(path)
-    vis = obs["field_visible"][(0, 0)]
+    vis = _vis_stack(env, obs, 0, 0)
     assert "?" not in vis
     assert vis == ["r", "b", "g", "y"]
 
@@ -271,7 +297,7 @@ def test_visibility_shoulder_exposed(tmp_path):
         gridWidth=3,
     )
     env, obs = _open_env(path)
-    vis = obs["field_visible"][(0, 0)]
+    vis = _vis_stack(env, obs, 0, 0)
     assert vis[0] == "r"
     assert vis[1] == "b"
     assert vis[2] == "?"
@@ -292,8 +318,8 @@ def test_visibility_field_heights_always_correct(tmp_path):
         gridWidth=2,
     )
     env, obs = _open_env(path)
-    assert obs["field_heights"][(0, 0)] == 4
-    assert obs["field_heights"][(0, 1)] == 2
+    assert int(obs["field_heights"][0, 0]) == 4
+    assert int(obs["field_heights"][1, 0]) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -307,23 +333,24 @@ def test_question_bucket_hidden_then_revealed():
     #   (0,0)=plain r   (0,1)=plain r
     #   (1,0)=?-bucket  (1,1)=plain b
     # The ?-bucket at (1, 0) has (0, 0) above (occupied) → not reachable → hidden.
-    assert obs["reserve"][1][0]["type"] == "question_bucket"
-    assert obs["reserve"][1][0]["color"] == "?"
-    assert obs["reserve"][1][0]["revealed"] is False
+    assert int(obs["reserve_cell_type"][1, 0]) == env.CELL_TYPE_IDS["question_bucket"]
+    assert int(obs["reserve_color"][1, 0]) == env.HIDDEN_COLOR_ID
+    assert int(obs["reserve_revealed"][1, 0]) == 0
 
     # Pick the plain bucket at (0, 0) — flat = 0 * cols + 0 = 0.
     obs2, _, _, _, _ = env.step(0)
-    assert obs2["reserve"][1][0]["color"] == "b"
-    assert obs2["reserve"][1][0]["revealed"] is True
+    assert int(obs2["reserve_color"][1, 0]) == env.color_to_id["b"]
+    assert int(obs2["reserve_revealed"][1, 0]) == 1
 
 
 def test_generator_observation_has_no_queue():
     env, obs = _open_env(LEVELS_DIR / "generator_test.json")
-    gen_desc = obs["reserve"][0][1]
-    assert gen_desc["type"] == "generator"
-    assert "facing" in gen_desc
-    assert "remaining" in gen_desc
-    assert "queue" not in gen_desc
+    # Generator at reserve (0, 1): typed channels expose facing + remaining,
+    # but there is no queue channel in the observation.
+    assert int(obs["reserve_cell_type"][0, 1]) == env.CELL_TYPE_IDS["generator"]
+    assert "reserve_generator_facing" in obs
+    assert "reserve_generator_remaining" in obs
+    assert "reserve_generator_queue" not in obs
 
 
 # ---------------------------------------------------------------------------
@@ -378,12 +405,12 @@ def test_determinism_replay():
         obs1_0, _ = env1.reset()
         env2 = HexFallEnv(TINY, seed=7)
         obs2_0, _ = env2.reset()
-    assert obs1_0 == obs2_0
+    assert _obs_equal(obs1_0, obs2_0)
 
     for action in [0, 1]:
         o1, r1, t1, tr1, i1 = env1.step(action)
         o2, r2, t2, tr2, i2 = env2.step(action)
-        assert o1 == o2
+        assert _obs_equal(o1, o2)
         assert r1 == r2
         assert t1 == t2
 
@@ -398,4 +425,4 @@ def test_reset_seed_overrides_init_seed():
         env.reset()
         obs_override, _ = env.reset(seed=2)
 
-    assert obs_override == obs_ref
+    assert _obs_equal(obs_override, obs_ref)

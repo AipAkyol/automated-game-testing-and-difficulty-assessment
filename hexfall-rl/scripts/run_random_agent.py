@@ -28,10 +28,20 @@ def run(
             return
         action = rng.choice(legal)
         row, col = action // cols, action % cols
-        picked = obs["reserve"][row][col]
+        type_id = int(obs["reserve_cell_type"][row, col])
+        type_name = next(
+            (n for n, v in env.CELL_TYPE_IDS.items() if v == type_id), "?"
+        )
+        color_id = int(obs["reserve_color"][row, col])
+        if color_id == env.NO_COLOR_ID:
+            color_name = "?"
+        elif color_id == env.HIDDEN_COLOR_ID:
+            color_name = "?"
+        else:
+            color_name = env.id_to_color[color_id]
         picked_summary = (
-            f"Last action: picked {picked.get('type', '?')}:"
-            f"{picked.get('color', '?')} @ reserve[{row},{col}]"
+            f"Last action: picked {type_name}:"
+            f"{color_name} @ reserve[{row},{col}]"
         )
 
         obs, reward, terminated, truncated, info = env.step(action)

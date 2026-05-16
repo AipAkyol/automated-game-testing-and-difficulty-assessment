@@ -10,12 +10,26 @@ def _trunc(s: str) -> str:
     return s if len(s) <= _COLOR_W else s[:_COLOR_W]
 
 
-def _render_field_agent(obs: dict) -> list[str]:
+def _render_field_agent(env: HexFallEnv, obs: dict) -> list[str]:
     field_visible = obs["field_visible"]
     field_heights = obs["field_heights"]
-    return _render_field_from_stacks(
-        {pos: (slices, field_heights[pos]) for pos, slices in field_visible.items()}
-    )
+    HID = env.HIDDEN_COLOR_ID
+    stacks: dict[tuple[int, int], tuple[list[str], int]] = {}
+    fh, fc = field_heights.shape
+    for r in range(fh):
+        for c in range(fc):
+            h = int(field_heights[r, c])
+            if h == 0:
+                continue
+            labels: list[str] = []
+            for d in range(h):
+                cid = int(field_visible[r, c, d])
+                if cid == HID:
+                    labels.append("?")
+                else:
+                    labels.append(env.id_to_color[cid])
+            stacks[(c, r)] = (labels, h)
+    return _render_field_from_stacks(stacks)
 
 
 def _render_field_full(state) -> list[str]:
@@ -157,8 +171,8 @@ def render(env: HexFallEnv, mode: str = "agent") -> str:
 
     state = env._state
     if mode == "agent":
-        obs = env._get_obs()
-        field_lines = _render_field_agent(obs)
+        obs = env.get_obs()
+        field_lines = _render_field_agent(env, obs)
     else:
         field_lines = _render_field_full(state)
 

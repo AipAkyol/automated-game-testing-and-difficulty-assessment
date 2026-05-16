@@ -6,7 +6,9 @@
       "Bash(python -m scripts.run_random_agent --level levels/tiny_solvable.json --mode agent --env-seed 0 --agent-seed 0)",
       "Bash(python -m scripts.run_random_agent --level levels/tiny_solvable.json --mode full --env-seed 0 --agent-seed 0)",
       "Bash(python -m scripts.run_random_agent --level levels/forced_lose.json --mode agent --env-seed 0 --agent-seed 0)",
-      "Bash(python -m scripts.run_random_agent --level levels/forced_lose.json --mode full --env-seed 0 --agent-seed 0)"
+      "Bash(python -m scripts.run_random_agent --level levels/forced_lose.json --mode full --env-seed 0 --agent-seed 0)",
+      "Bash(python -m scripts.run_random_agent --level levels/ice_test.json --env-seed 0 --agent-seed 0)",
+      "Bash(python -m scripts.run_random_agent --level levels/pin_test.json --env-seed 0 --agent-seed 0)"
     ]
   }
 }
