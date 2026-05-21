@@ -1,7 +1,22 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python scripts/survey_paxie_levels.py)"
+      "Bash(python scripts/survey_paxie_levels.py)",
+      "Bash(.venv\\\\Scripts\\\\activate)",
+      "Bash(python -c \"import torch; print\\(torch.cuda.is_available\\(\\), torch.cuda.get_device_name\\(0\\)\\)\")",
+      "PowerShell(.venv\\\\Scripts\\\\Activate.ps1)",
+      "PowerShell(python -c \"import torch; print\\(torch.cuda.is_available\\(\\), torch.cuda.get_device_name\\(0\\)\\)\")",
+      "PowerShell(pytest)",
+      "PowerShell(New-Item -ItemType Directory -Force vendor)",
+      "PowerShell(Invoke-WebRequest -Uri \"https://raw.githubusercontent.com/vwxyzjn/cleanrl/fe8d8a03c41a7ef5b523e2e354bd01c363e786bb/cleanrl/ppo.py\" -OutFile \"vendor\\\\cleanrl_ppo_reference.py\")",
+      "PowerShell(git check-ignore .venv)",
+      "PowerShell(pytest tests/test_env.py -q 2>&1)",
+      "PowerShell(pytest tests/test_env.py::test_action_mask_plain_level_legal_and_illegal_actions -q 2>&1)",
+      "PowerShell(pytest -q 2>&1)",
+      "Bash(python -c \"import gymnasium; print\\(gymnasium.__version__\\)\")",
+      "PowerShell(python -c \"import scripts.train_ppo; print\\('import ok'\\)\")",
+      "PowerShell(python scripts/train_ppo.py --level-path levels/tiny_solvable.json --total-timesteps 256 --run-name sanity_256 2>&1)",
+      "PowerShell(python -c \"import gymnasium as gym; print\\([x for x in dir\\(gym.vector\\) if 'utoreset' in x.lower\\(\\)]\\); from gymnasium.vector import AutoresetMode; print\\(list\\(AutoresetMode\\)\\)\")"
     ]
   }
 }

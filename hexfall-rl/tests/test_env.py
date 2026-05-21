@@ -79,6 +79,109 @@ def test_action_mask_dimension_and_consistency():
     assert list(obs["action_mask"]) == expected_flat
 
 
+def test_action_mask_shape_dtype_matches_reachability_int32():
+    # action_mask is the flat (R*C,) legality mask the policy reads; its dtype
+    # must match the rest of the integer obs keys (int32) so torch.from_numpy
+    # cast works uniformly downstream.
+    env = HexFallEnv(TINY, seed=0)
+    obs, _ = env.reset()
+    R, C = env._state.reserve_rows, env._state.reserve_cols
+    assert obs["action_mask"].shape == (R * C,)
+    assert obs["action_mask"].dtype == np.int32
+    assert obs["reachability"].dtype == np.int32
+    assert set(np.unique(obs["action_mask"]).tolist()).issubset({0, 1})
+
+
+def test_action_mask_plain_level_legal_and_illegal_actions():
+    # On tiny_solvable, at reset the mask should mark exactly the reachable
+    # bucket-type cells (buffer is empty so condition 4 holds globally).
+    env = HexFallEnv(TINY, seed=0)
+    obs, _ = env.reset()
+    C = env._state.reserve_cols
+    mask = obs["action_mask"]
+    legal = [i for i, m in enumerate(mask) if m]
+    assert len(legal) > 0
+
+    # Every legal index decodes to a reachable bucket-type cell.
+    bucket_ids = {
+        env.CELL_TYPE_IDS["plain_bucket"],
+        env.CELL_TYPE_IDS["question_bucket"],
+        env.CELL_TYPE_IDS["ice_bucket_thawed"],
+    }
+    for a in legal:
+        r, c = a // C, a % C
+        assert int(obs["reachability"][r, c]) == 1
+        assert int(obs["reserve_cell_type"][r, c]) in bucket_ids
+
+    # Stepping a legal action does not raise.
+    env.step(legal[0])
+
+    # Confirm step() raises ValueError on a mask-0 cell (existing env
+    # contract — the mask is advisory; the env still rejects illegal picks).
+    # Use ice_test where the frozen-ice cells are guaranteed illegal at reset.
+    env2, obs2 = _open_env(LEVELS_DIR / "ice_test.json")
+    illegal = [i for i, m in enumerate(obs2["action_mask"]) if not m]
+    assert illegal, "ice_test should have illegal (frozen-ice) cells at reset"
+    with pytest.raises(ValueError):
+        env2.step(illegal[0])
+
+
+def test_action_mask_zero_on_frozen_ice_then_one_after_thaw():
+    # ice_test.json reserve layout (1 row x 3 cols):
+    #   (0,0) plain bucket 'b'
+    #   (0,1) frozen ice, threshold 1
+    #   (0,2) frozen ice, threshold 2
+    # All three cells are reachable (top row). Only (0,0) is legal at reset.
+    env, obs = _open_env(LEVELS_DIR / "ice_test.json")
+    C = env._reserve_cols
+
+    assert int(obs["reserve_cell_type"][0, 1]) == env.CELL_TYPE_IDS["ice_bucket_frozen"]
+    assert int(obs["reserve_cell_type"][0, 2]) == env.CELL_TYPE_IDS["ice_bucket_frozen"]
+    assert int(obs["reachability"][0, 1]) == 1
+    assert int(obs["reachability"][0, 2]) == 1
+
+    # Frozen ice → mask 0 even though reachable + bucket-shaped.
+    assert int(obs["action_mask"][0 * C + 1]) == 0
+    assert int(obs["action_mask"][0 * C + 2]) == 0
+    # Plain bucket → mask 1.
+    assert int(obs["action_mask"][0 * C + 0]) == 1
+
+    # Pick (0, 0). move_counter -> 1, threshold-1 ice at (0, 1) thaws.
+    obs2, _, _, _, _ = env.step(0)
+    assert int(obs2["reserve_cell_type"][0, 1]) == env.CELL_TYPE_IDS["ice_bucket_thawed"]
+    assert int(obs2["action_mask"][0 * C + 1]) == 1
+    # The threshold-2 ice at (0, 2) is still frozen → still mask 0.
+    assert int(obs2["reserve_cell_type"][0, 2]) == env.CELL_TYPE_IDS["ice_bucket_frozen"]
+    assert int(obs2["action_mask"][0 * C + 2]) == 0
+
+
+def test_action_mask_zero_under_pin_then_one_after_destruction():
+    # pin_test.json: reserve (1, 0) is a plain red bucket sitting under pin A's
+    # ray. At reset its mask must be 0 even though cell_type is plain_bucket.
+    env, obs = _open_env(LEVELS_DIR / "pin_test.json")
+    C = env._reserve_cols
+    flat_10 = 1 * C + 0
+
+    assert int(obs["reserve_cell_type"][1, 0]) == env.CELL_TYPE_IDS["plain_bucket"]
+    assert int(obs["reserve_pin_ray_overlay"][1, 0]) == 1
+    assert int(obs["action_mask"][flat_10]) == 0
+
+    # Picking (1, 2) destroys both pins via cascade (per pin overlay test).
+    obs2, _, _, _, _ = env.step(1 * C + 2)
+    assert int(obs2["reserve_pin_ray_overlay"][1, 0]) == 0
+
+    # Either the cascade consumed the (1, 0) bucket OR it survived and is now
+    # legal — both outcomes prove pin-blocking was the original mask-0 reason.
+    cell_type_after = int(obs2["reserve_cell_type"][1, 0])
+    if cell_type_after == env.CELL_TYPE_IDS["plain_bucket"]:
+        assert int(obs2["reachability"][1, 0]) == 1
+        assert int(obs2["action_mask"][flat_10]) == 1
+    else:
+        # Bucket was consumed in the pull cascade; the original pin-blocking is
+        # still proven gone by reserve_pin_ray_overlay == 0 above.
+        assert cell_type_after == env.CELL_TYPE_IDS["empty"]
+
+
 def test_action_index_decoding():
     env = HexFallEnv(TINY, seed=42)
     obs, _ = env.reset()
