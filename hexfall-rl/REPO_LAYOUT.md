@@ -36,12 +36,16 @@ hexfall-rl/
 │   ├── __init__.py             # Package marker (needed for console-script entry points)
 │   ├── run_random_agent.py     # Runs a random agent end-to-end; prints renderer output per step
 │   ├── smoke_load.py           # Loads every level{N}.json under a directory; reports OK/WARN/UNSUPPORTED/ERROR aggregate + pin geometry
-│   └── survey_paxie_levels.py  # Aggregate-only survey of CLASSIFIED.paxie_data/ → markdown report
-└── tests/                    # pytest test suite (86 tests across 3 files)
-    ├── __init__.py
-    ├── test_env.py           # Tests for Gymnasium env wrapper (env.py)
-    ├── test_game.py          # Tests for core mechanics, ice thaw, pin destruction, cascade (game.py)
-    └── test_level_loader.py  # Tests for level loader, schema, unsupported mechanics, semantic checks (level_loader.py)
+│   ├── survey_paxie_levels.py  # Aggregate-only survey of CLASSIFIED.paxie_data/ → markdown report
+│   └── train_ppo.py            # PPO trainer: Dict-obs encoder, mask-in-forward policy, 30-min wall-clock checkpointing, --resume
+├── tests/                    # pytest test suite (90 tests across 3 files)
+│   ├── __init__.py
+│   ├── test_env.py           # Tests for Gymnasium env wrapper (env.py)
+│   ├── test_game.py          # Tests for core mechanics, ice thaw, pin destruction, cascade (game.py)
+│   └── test_level_loader.py  # Tests for level loader, schema, unsupported mechanics, semantic checks (level_loader.py)
+├── vendor/                   # Third-party reference code, kept byte-identical for upstream diffability
+│   └── cleanrl_ppo_reference.py  # CleanRL ppo.py @ commit fe8d8a0 — template for scripts/train_ppo.py
+└── runs/                     # (gitignored) TensorBoard event files + .pt checkpoints from train_ppo.py runs
 ```
 
 Note: documents/ contains local copies of spec docs for Claude Code reference.
@@ -52,3 +56,9 @@ dataset (`level_data/level1.json` … `level100.json`), per-level `.meta`
 sidecars, the filtered user-data CSV, and the generated `survey_report.md`.
 The dataset is classified; only the survey/smoke scripts and the level schema
 are committable.
+
+Gitignore lives in the parent directory (`../.gitignore`). It currently covers
+`.venv/`, `.claude/`, `CLASSIFIED.paxie_data/`, plus Python build/cache
+patterns. `runs/` should be added there — TensorBoard event files and
+multi-MB checkpoint `.pt` files accumulate fast and are not reproducible
+build artifacts.

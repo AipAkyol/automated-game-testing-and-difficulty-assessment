@@ -16,7 +16,22 @@
       "Bash(python -c \"import gymnasium; print\\(gymnasium.__version__\\)\")",
       "PowerShell(python -c \"import scripts.train_ppo; print\\('import ok'\\)\")",
       "PowerShell(python scripts/train_ppo.py --level-path levels/tiny_solvable.json --total-timesteps 256 --run-name sanity_256 2>&1)",
-      "PowerShell(python -c \"import gymnasium as gym; print\\([x for x in dir\\(gym.vector\\) if 'utoreset' in x.lower\\(\\)]\\); from gymnasium.vector import AutoresetMode; print\\(list\\(AutoresetMode\\)\\)\")"
+      "PowerShell(python -c \"import gymnasium as gym; print\\([x for x in dir\\(gym.vector\\) if 'utoreset' in x.lower\\(\\)]\\); from gymnasium.vector import AutoresetMode; print\\(list\\(AutoresetMode\\)\\)\")",
+      "PowerShell(python scripts/train_ppo.py --level-path levels/tiny_solvable.json --total-timesteps 100000 --run-name resume_test --checkpoint-interval-seconds 600 2>&1)",
+      "Read(//c/Users/a-aky/AppData/Local/Temp/claude/c--comp-eng-machine-learning-cmpe492-automated-game-testing-and-difficulty-assessment-hexfall-rl/fbe9c1fa-d980-4cea-a4a6-de060861aeb4/tasks/**)",
+      "PowerShell(python scripts/train_ppo.py --level-path levels/tiny_solvable.json --total-timesteps 200000 --run-name resume_test --checkpoint-interval-seconds 120 2>&1)",
+      "PowerShell(python _tb_inspect.py)",
+      "PowerShell(python scripts/train_ppo.py --level-path levels/tiny_solvable.json --total-timesteps 200000 --run-name resume_test --checkpoint-interval-seconds 120 --resume runs/resume_test/checkpoint_1779369064.pt 2>&1)",
+      "PowerShell(python _tb_compare.py)",
+      "PowerShell(python scripts/train_ppo.py --level-path levels/tiny_solvable.json --total-timesteps 100000 --run-name smoke_tiny 2>&1)",
+      "Bash(nvidia-smi --query-gpu=utilization.gpu,memory.used,temperature.gpu --format=csv,noheader,nounits)",
+      "PowerShell(python _tb_smoke.py smoke_tiny)",
+      "PowerShell(python scripts/train_ppo.py --level-path levels/ice_test.json --total-timesteps 115000 --run-name smoke_ice 2>&1)",
+      "PowerShell(python scripts/train_ppo.py --level-path levels/pin_test.json --total-timesteps 115000 --run-name smoke_pin 2>&1)",
+      "Bash(python -c ' *)",
+      "PowerShell(python _tb_smoke.py smoke_ice)",
+      "PowerShell(python _tb_smoke.py smoke_pin)",
+      "Bash(git check-ignore *)"
     ]
   }
 }

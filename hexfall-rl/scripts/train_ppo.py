@@ -217,10 +217,10 @@ def main(argv=None):
 
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
-    # SAME_STEP autoreset: when an env terminates inside envs.step(), the
-    # returned obs is the post-reset state (not the terminal obs). This keeps
-    # the masked policy from ever seeing an all-illegal mask on a terminal
-    # observation under gymnasium 1.x's default NEXT_STEP semantics.
+    # SAME_STEP autoreset: prevents the all-zero action_mask of terminal HexFall states from
+    # reaching the policy and tripping the all-illegal bug guard. Default NEXT_STEP returns the
+    # terminal obs once before reset; HexFall terminal states have no legal actions, which would
+    # trigger the guard on non-bug behavior. See issue #8 worker session 2 report.
     envs = gym.vector.SyncVectorEnv(
         [make_env(args.level_path, args.seed + i) for i in range(args.num_envs)],
         autoreset_mode=gym.vector.AutoresetMode.SAME_STEP,

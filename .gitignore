@@ -1,6 +1,9 @@
 hexfall-rl/CLASSIFIED.paxie_data/*
 hexfall-rl/.venv/
 hexfall-rl/.claude/
+hexfall-rl/runs/
+*.pt
+*.pth
 
 __pycache__/
 *.py[cod]
