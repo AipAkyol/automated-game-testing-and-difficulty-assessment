@@ -8,7 +8,7 @@ Format: all eight levels are now in Paxie's native JSON format (per
 y increasing downward.
 
 All levels emit a slice-bucket parity warning at load: the simulator's bucket
-capacity is 25 (per `HEXFALL_RULES.md` §4), but these fixtures are intentionally
+capacity is 24 (per `HEXFALL_RULES.md` §4), but these fixtures are intentionally
 tiny — they never come close to filling a bucket. The warning is expected and
 does not affect the mechanic each level exercises.
 
