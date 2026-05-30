@@ -18,6 +18,7 @@ hexfall-rl/
 │   ├── env.py                # Gymnasium wrapper (reset, step, observation, action mask)
 │   ├── game.py               # Core mechanics: ticks (ice thaw → pull → fill → fall → generator → reachability → pin destruction), reachability, action legality
 │   ├── level_loader.py       # Paxie JSON → game state; schema + 8 semantic checks; hard-rejects unsupported mechanics
+│   ├── oracle.py             # Difficulty oracle: 5 structural features + 3 player winrates → Ridge(StandardScaler) predicts human winrate; fit=20-ep matrix, predict=10-ep fresh
 │   ├── render.py             # CLI renderer: agent-view / full-view text dump (handles ice + pin overlay); has main() for `hexfall-render`
 │   ├── types.py              # Dataclasses: PlainBucket, QuestionBucket, IceBucket, Generator, Wall, Pin, BufferBucket, GameState
 │   ├── players/              # Bounded-rationality players + evaluator (winrates to fit vs. human data)
@@ -47,16 +48,18 @@ hexfall-rl/
 │   ├── survey_paxie_levels.py  # Aggregate-only survey of CLASSIFIED.paxie_data/ → markdown report
 │   ├── train_ppo.py            # PPO trainer: Dict-obs encoder, mask-in-forward policy, 30-min wall-clock checkpointing, --resume
 │   ├── mcts_spotcheck.py       # Times one MCTS episode on level50 across N to pick rollout budget (locked N=100)
-│   └── run_eval_matrix.py      # 3-player × 99-level × 20-episode matrix (spawn Pool) → outputs/eval_matrix.csv
-├── outputs/                  # Generated evaluation artifacts
+│   ├── run_eval_matrix.py      # 3-player × 99-level × 20-episode matrix (spawn Pool) → outputs/eval_matrix.csv
+│   └── fit_oracle.py           # Fits the oracle: pivots eval_matrix + joins Anıl CSV, LOO-CV Spearman/Pearson gate, ablation, scatter → CLASSIFIED.paxie_data/oracle/
+├── outputs/                  # Generated evaluation artifacts (committed)
 │   └── eval_matrix.csv       # greedy/lookahead/mcts winrates per level (level_id,player,winrate,n_episodes,seed_base,wallclock_seconds)
-├── tests/                    # pytest test suite (104 tests across 5 files)
+├── tests/                    # pytest test suite (110 tests across 6 files)
 │   ├── __init__.py
 │   ├── test_env.py           # Tests for Gymnasium env wrapper (env.py)
 │   ├── test_game.py          # Tests for core mechanics, ice thaw, pin destruction, cascade (game.py)
 │   ├── test_level_loader.py  # Tests for level loader, schema, unsupported mechanics, semantic checks (level_loader.py)
 │   ├── test_players.py       # Tests for players: Protocol, evaluator determinism, env.fork() independence
-│   └── test_mcts.py          # Tests for MCTSPlayer: protocol, legal action, ≥greedy on tiny, Paxie sample, determinism
+│   ├── test_mcts.py          # Tests for MCTSPlayer: protocol, legal action, ≥greedy on tiny, Paxie sample, determinism
+│   └── test_oracle.py        # Tests for oracle: 5-feature/8-vector shape, fit determinism, predict clamp [0,1], predict determinism
 ├── vendor/                   # Third-party reference code, kept byte-identical for upstream diffability
 │   └── cleanrl_ppo_reference.py  # CleanRL ppo.py @ commit fe8d8a0 — template for scripts/train_ppo.py
 └── runs/                     # (gitignored) TensorBoard event files + .pt checkpoints from train_ppo.py runs
@@ -67,9 +70,12 @@ Canonical versions live in the Claude project files, not the repo.
 
 Gitignored sibling directory: `CLASSIFIED.paxie_data/` holds Anıl's 100-level
 dataset (`level_data/level1.json` … `level100.json`), per-level `.meta`
-sidecars, the filtered user-data CSV, and the generated `survey_report.md`.
-The dataset is classified; only the survey/smoke scripts and the level schema
-are committable.
+sidecars, the filtered user-data CSV (`user_data_hexa_fall_filtered.csv`,
+comma-separated despite the name), the generated `survey_report.md`, and
+`oracle/` (fit_oracle.py's `predicted_vs_real.png` and any derived feature/join
+tables — kept here because they embed human winrates + proprietary level
+designs). The dataset is classified; only the survey/smoke scripts, the oracle
+code, and the level schema are committable — never the derived artifacts.
 
 Gitignore lives in the parent directory (`../.gitignore`). It currently covers
 `.venv/`, `.claude/`, `CLASSIFIED.paxie_data/`, plus Python build/cache
