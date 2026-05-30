@@ -2,6 +2,7 @@ hexfall-rl/CLASSIFIED.paxie_data/*
 hexfall-rl/.venv/
 hexfall-rl/.claude/
 hexfall-rl/runs/
+hexfall-rl/outputs/
 *.pt
 *.pth
 
