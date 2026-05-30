@@ -20,6 +20,12 @@ hexfall-rl/
 │   ├── level_loader.py       # Paxie JSON → game state; schema + 8 semantic checks; hard-rejects unsupported mechanics
 │   ├── render.py             # CLI renderer: agent-view / full-view text dump (handles ice + pin overlay); has main() for `hexfall-render`
 │   ├── types.py              # Dataclasses: PlainBucket, QuestionBucket, IceBucket, Generator, Wall, Pin, BufferBucket, GameState
+│   ├── players/              # Bounded-rationality players + evaluator (winrates to fit vs. human data)
+│   │   ├── __init__.py       # Re-exports Player, GreedyPlayer, LookaheadPlayer, evaluate
+│   │   ├── base.py           # Player Protocol — act(obs, env) -> legal action index
+│   │   ├── evaluator.py      # evaluate(player, level, n_episodes, seed) -> winrate; deterministic
+│   │   ├── greedy.py         # GreedyPlayer: depth-0 heuristic (buffer colors vs. bottom-row tops)
+│   │   └── lookahead.py      # LookaheadPlayer: depth-k env.fork() search, fall-sample expectation
 │   └── schemas/
 │       └── level_schema.json # JSON Schema (draft-07) for Paxie-native level files
 ├── levels/                   # Hand-built level JSON files (all Paxie format)
@@ -34,15 +40,17 @@ hexfall-rl/
 │   └── pin_test.json         # Pin destruction + cascading destruction in a single tick
 ├── scripts/
 │   ├── __init__.py             # Package marker (needed for console-script entry points)
+│   ├── run_players.py          # Smoke run: greedy + lookahead-1/-2 winrates on tiny_solvable & level50
 │   ├── run_random_agent.py     # Runs a random agent end-to-end; prints renderer output per step
 │   ├── smoke_load.py           # Loads every level{N}.json under a directory; reports OK/WARN/UNSUPPORTED/ERROR aggregate + pin geometry
 │   ├── survey_paxie_levels.py  # Aggregate-only survey of CLASSIFIED.paxie_data/ → markdown report
 │   └── train_ppo.py            # PPO trainer: Dict-obs encoder, mask-in-forward policy, 30-min wall-clock checkpointing, --resume
-├── tests/                    # pytest test suite (90 tests across 3 files)
+├── tests/                    # pytest test suite (99 tests across 4 files)
 │   ├── __init__.py
 │   ├── test_env.py           # Tests for Gymnasium env wrapper (env.py)
 │   ├── test_game.py          # Tests for core mechanics, ice thaw, pin destruction, cascade (game.py)
-│   └── test_level_loader.py  # Tests for level loader, schema, unsupported mechanics, semantic checks (level_loader.py)
+│   ├── test_level_loader.py  # Tests for level loader, schema, unsupported mechanics, semantic checks (level_loader.py)
+│   └── test_players.py       # Tests for players: Protocol, evaluator determinism, env.fork() independence
 ├── vendor/                   # Third-party reference code, kept byte-identical for upstream diffability
 │   └── cleanrl_ppo_reference.py  # CleanRL ppo.py @ commit fe8d8a0 — template for scripts/train_ppo.py
 └── runs/                     # (gitignored) TensorBoard event files + .pt checkpoints from train_ppo.py runs

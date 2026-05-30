@@ -1,3 +1,5 @@
+import copy
+import random
 from pathlib import Path
 from typing import Any
 
@@ -201,6 +203,46 @@ class HexFallEnv(gym.Env):
 
     def render(self) -> None:
         return None
+
+    # ------------------------------------------------------------------
+    # State forking (for lookahead players)
+    # ------------------------------------------------------------------
+
+    def fork(self) -> "HexFallEnv":
+        """Return a new HexFallEnv with an independent deep copy of the current state.
+
+        The fork can be stepped independently of the original: it owns its
+        ``GameState`` (field, buffer, reserve, pins, move counter) and its own
+        RNG, so ``forked.step(action)`` never mutates the original env.
+
+        The env holds only pure-Python data (no file handles, no GPU tensors),
+        so ``copy.deepcopy`` is safe and self-contained. The fork is produced by
+        copying rather than via ``gym.make``, so it is not registered with any
+        Gymnasium env infrastructure (``spec`` stays ``None``).
+
+        Note on stochasticity: deepcopy clones the RNG in its *current* state, so
+        a freshly forked env reproduces the original's fall decisions. To
+        enumerate distinct stochastic outcomes, call :meth:`reseed_rng` on the
+        fork before stepping it (see ``LookaheadPlayer``).
+
+        Usage::
+
+            forked = env.fork()
+            forked.reseed_rng(0)
+            obs, rew, term, trunc, info = forked.step(action)
+        """
+        return copy.deepcopy(self)
+
+    def reseed_rng(self, seed: int) -> None:
+        """Re-seed the internal fall-direction RNG.
+
+        The simulator's only stochastic choice is the hex fall direction
+        (HEXFALL_MDP_SPEC.md §3.4), drawn from ``GameState.rng`` — a
+        ``random.Random`` (not numpy). Replacing it with a freshly seeded
+        ``random.Random`` lets a caller enumerate distinct fall outcomes from a
+        forked env via ``fork(); reseed_rng(k); step(a)``.
+        """
+        self._state.rng = random.Random(seed)
 
     # ------------------------------------------------------------------
     # Observation construction
