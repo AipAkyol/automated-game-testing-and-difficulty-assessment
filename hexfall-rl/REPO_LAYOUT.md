@@ -22,9 +22,9 @@ hexfall-rl/
 │   ├── render.py             # CLI renderer: agent-view / full-view text dump (handles ice + pin overlay); has main() for `hexfall-render`
 │   ├── types.py              # Dataclasses: PlainBucket, QuestionBucket, IceBucket, Generator, Wall, Pin, BufferBucket, GameState
 │   ├── players/              # Bounded-rationality players + evaluator (winrates to fit vs. human data)
-│   │   ├── __init__.py       # Re-exports Player, GreedyPlayer, LookaheadPlayer, MCTSPlayer, evaluate
+│   │   ├── __init__.py       # Re-exports Player, GreedyPlayer, LookaheadPlayer, MCTSPlayer, evaluate, evaluate_graded
 │   │   ├── base.py           # Player Protocol — act(obs, env) -> legal action index
-│   │   ├── evaluator.py      # evaluate(player, level, n_episodes, seed) -> winrate; deterministic
+│   │   ├── evaluator.py      # evaluate(...) -> winrate (scalar); evaluate_graded(...) -> per-episode (win, slices-cleared frac, moves_survived) + per-(player,level) aggregates; both deterministic, shared loop
 │   │   ├── greedy.py         # GreedyPlayer: depth-0 heuristic (buffer colors vs. bottom-row tops)
 │   │   ├── lookahead.py      # LookaheadPlayer: depth-k env.fork() search, fall-sample expectation
 │   │   └── mcts.py           # MCTSPlayer: UCT tree search, env.fork() rollouts (greedy default), deterministic seed seq
@@ -49,15 +49,18 @@ hexfall-rl/
 │   ├── train_ppo.py            # PPO trainer: Dict-obs encoder, mask-in-forward policy, 30-min wall-clock checkpointing, --resume
 │   ├── mcts_spotcheck.py       # Times one MCTS episode on level50 across N to pick rollout budget (locked N=100)
 │   ├── run_eval_matrix.py      # 3-player × 99-level × 20-episode matrix (spawn Pool) → outputs/eval_matrix.csv
-│   └── fit_oracle.py           # Fits the oracle: pivots eval_matrix + joins Anıl CSV, LOO-CV Spearman/Pearson gate, ablation, scatter → CLASSIFIED.paxie_data/oracle/
-├── outputs/                  # Generated evaluation artifacts (committed)
-│   └── eval_matrix.csv       # greedy/lookahead/mcts winrates per level (level_id,player,winrate,n_episodes,seed_base,wallclock_seconds)
-├── tests/                    # pytest test suite (110 tests across 6 files)
+│   ├── run_eval_matrix_graded.py # Sibling of run_eval_matrix.py: identical config, calls evaluate_graded → outputs/eval_matrix_graded.csv (same seeds ⇒ winrate column bit-identical)
+│   ├── fit_oracle.py           # Fits the oracle: pivots eval_matrix + joins Anıl CSV, LOO-CV Spearman/Pearson gate, ablation, scatter → CLASSIFIED.paxie_data/oracle/
+│   └── fit_oracle_graded.py    # Issue F refit: 6 graded features (frac-cleared + moves × 3 players) in 3 ablation configs, LOO-CV vs Issue-C baseline + slice-count redundancy check; prints only, no artifacts
+├── outputs/                  # Generated evaluation artifacts (eval_matrix.csv tracked; outputs/ is otherwise gitignored at parent level, so the graded CSV is untracked)
+│   ├── eval_matrix.csv       # greedy/lookahead/mcts winrates per level (level_id,player,winrate,n_episodes,seed_base,wallclock_seconds)
+│   └── eval_matrix_graded.csv # Graded matrix (Issue F): level_id,player,n_episodes,seed_base,winrate,mean_slices_cleared_fraction,mean_moves_survived,wallclock_seconds
+├── tests/                    # pytest test suite (114 tests across 6 files)
 │   ├── __init__.py
 │   ├── test_env.py           # Tests for Gymnasium env wrapper (env.py)
 │   ├── test_game.py          # Tests for core mechanics, ice thaw, pin destruction, cascade (game.py)
 │   ├── test_level_loader.py  # Tests for level loader, schema, unsupported mechanics, semantic checks (level_loader.py)
-│   ├── test_players.py       # Tests for players: Protocol, evaluator determinism, env.fork() independence
+│   ├── test_players.py       # Tests for players: Protocol, evaluator determinism, env.fork() independence, graded eval (keys/types, frac∈[0,1], win⇒frac=1.0, determinism)
 │   ├── test_mcts.py          # Tests for MCTSPlayer: protocol, legal action, ≥greedy on tiny, Paxie sample, determinism
 │   └── test_oracle.py        # Tests for oracle: 5-feature/8-vector shape, fit determinism, predict clamp [0,1], predict determinism
 ├── vendor/                   # Third-party reference code, kept byte-identical for upstream diffability
