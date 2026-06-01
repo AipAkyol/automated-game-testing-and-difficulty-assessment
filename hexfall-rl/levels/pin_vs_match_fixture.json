@@ -1,0 +1,42 @@
+{
+  "levelNumber": 9001,
+  "levelVersionCode": 1,
+  "collectorArea": {
+    "gridWidth": 3,
+    "gridHeight": 3,
+    "singleBlockCollectors": [
+      { "x": 0, "y": 0, "color": "r" },
+      { "x": 2, "y": 0, "color": "b" }
+    ],
+    "woodBoxCollectors": [],
+    "iceCollectors": [],
+    "deadCells": [],
+    "tunnels": [],
+    "pinBlockers": [
+      { "x": 0, "y": 1, "direction": "Down", "blockCount": 0 }
+    ],
+    "mysteryCollectors": [],
+    "tiedPairs": [],
+    "keyLocks": []
+  },
+  "hexStackArea": {
+    "gridWidth": 1,
+    "gridHeight": 2,
+    "stacks": [
+      { "x": 0, "y": 0, "colors": ["r", "r"] },
+      { "x": 0, "y": 1, "colors": ["b", "b"] }
+    ],
+    "tunnels": []
+  },
+  "editorMeta": {
+    "totalBlocks": 4,
+    "colorCount": 2,
+    "maxColorsPerStack": 1,
+    "heightMin": 2,
+    "heightMax": 2,
+    "randomness": 0.0,
+    "verticalPercent": 0.0,
+    "horizontalPercent": 0.0,
+    "mysteryPercent": 0.0
+  }
+}
