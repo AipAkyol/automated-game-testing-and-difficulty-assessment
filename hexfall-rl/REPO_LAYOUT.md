@@ -15,6 +15,7 @@ hexfall-rl/
 │   └── level_schema.json     # JSON Schema mirror of hexfall/schemas/level_schema.json
 ├── hexfall/                  # Python package — simulator, env wrapper, types
 │   ├── __init__.py           # Package init
+│   ├── clog.py               # Clog structural features (Issue H): fcc/ctd/rhc extractors from a loaded GameState; pure, separate from oracle.py for ablation. ctd pruned at gate (slice-count redundant); fcc+rhc refit = honest negative
 │   ├── env.py                # Gymnasium wrapper (reset, step, observation, action mask)
 │   ├── game.py               # Core mechanics: ticks (ice thaw → pull → fill → fall → generator → reachability → pin destruction), reachability, action legality
 │   ├── level_loader.py       # Paxie JSON → game state; schema + 8 semantic checks; hard-rejects unsupported mechanics
@@ -53,14 +54,16 @@ hexfall-rl/
 │   ├── run_eval_matrix.py      # 3-player × 99-level × 20-episode matrix (spawn Pool) → outputs/eval_matrix.csv
 │   ├── run_eval_matrix_graded.py # Sibling of run_eval_matrix.py: identical config, calls evaluate_graded → outputs/eval_matrix_graded.csv (same seeds ⇒ winrate column bit-identical)
 │   ├── run_eval_matrix_human_tactics.py # Sibling of run_eval_matrix.py: single player human_tactics × 99 × 20 → outputs/eval_matrix_human_tactics.csv (same seeds, identical schema) [Issue G]
+│   ├── compute_clog_features.py # Issue H Phase 2: fcc/ctd/rhc clog features over 99 levels → CLASSIFIED.paxie_data/oracle/clog_features.csv; orthogonality gate vs total_slice_count (exits 1 if any |r| ≥ 0.7)
 │   ├── fit_oracle.py           # Fits the oracle: pivots eval_matrix + joins Anıl CSV, LOO-CV Spearman/Pearson gate, ablation, scatter → CLASSIFIED.paxie_data/oracle/
 │   ├── fit_oracle_graded.py    # Issue F refit: 6 graded features (frac-cleared + moves × 3 players) in 3 ablation configs, LOO-CV vs Issue-C baseline + slice-count redundancy check; prints only, no artifacts
-│   └── fit_oracle_human_tactics.py # Issue G refit: 3 configs (structural-only / +4 players / +human_tactics-only), LOO-CV vs Issue-C baseline + greedy & slice-count redundancy; prints only (verdict: human_tactics is noise)
+│   ├── fit_oracle_human_tactics.py # Issue G refit: 3 configs (structural-only / +4 players / +human_tactics-only), LOO-CV vs Issue-C baseline + greedy & slice-count redundancy; prints only (verdict: human_tactics is noise)
+│   └── fit_oracle_clog.py     # Issue H Phase 3 refit: 4 configs (structural-only / +fcc+rhc / +3 players / fcc+rhc-only), LOO-CV vs 0.6422 baseline, frame guard + (b) coefficients; prints only (verdict: fcc+rhc honest negative)
 ├── outputs/                  # Generated evaluation artifacts — all gitignored at parent level (working-tree only, none committed)
 │   ├── eval_matrix.csv       # greedy/lookahead/mcts winrates per level (level_id,player,winrate,n_episodes,seed_base,wallclock_seconds)
 │   ├── eval_matrix_graded.csv # Graded matrix (Issue F): level_id,player,n_episodes,seed_base,winrate,mean_slices_cleared_fraction,mean_moves_survived,wallclock_seconds
 │   └── eval_matrix_human_tactics.csv # human_tactics winrate per level — same schema as eval_matrix.csv (Issue G)
-├── tests/                    # pytest test suite (120 tests across 7 files)
+├── tests/                    # pytest test suite (125 tests across 8 files)
 │   ├── __init__.py
 │   ├── test_env.py           # Tests for Gymnasium env wrapper (env.py)
 │   ├── test_game.py          # Tests for core mechanics, ice thaw, pin destruction, cascade (game.py)
@@ -68,6 +71,7 @@ hexfall-rl/
 │   ├── test_players.py       # Tests for players: Protocol, evaluator determinism, env.fork() independence, graded eval (keys/types, frac∈[0,1], win⇒frac=1.0, determinism)
 │   ├── test_mcts.py          # Tests for MCTSPlayer: protocol, legal action, ≥greedy on tiny, Paxie sample, determinism
 │   ├── test_human_tactics.py # Tests for HumanTacticsPlayer: protocol/legal-action, determinism, tiny+real-level e2e, matched>speculative, pin_setup>match (engine-verified) [Issue G]
+│   ├── test_clog.py          # Tests for clog extractors (Issue H): keys/types, features ∈ [0,1], ctd=0 on monochrome fixture, determinism, hand-computed exact values
 │   └── test_oracle.py        # Tests for oracle: 5-feature/8-vector shape, fit determinism, predict clamp [0,1], predict determinism
 ├── vendor/                   # Third-party reference code, kept byte-identical for upstream diffability
 │   └── cleanrl_ppo_reference.py  # CleanRL ppo.py @ commit fe8d8a0 — template for scripts/train_ppo.py
@@ -81,10 +85,11 @@ Gitignored sibling directory: `CLASSIFIED.paxie_data/` holds Anıl's 100-level
 dataset (`level_data/level1.json` … `level100.json`), per-level `.meta`
 sidecars, the filtered user-data CSV (`user_data_hexa_fall_filtered.csv`,
 comma-separated despite the name), the generated `survey_report.md`, and
-`oracle/` (fit_oracle.py's `predicted_vs_real.png` and any derived feature/join
-tables — kept here because they embed human winrates + proprietary level
-designs). The dataset is classified; only the survey/smoke scripts, the oracle
-code, and the level schema are committable — never the derived artifacts.
+`oracle/` (fit_oracle.py's `predicted_vs_real.png`, compute_clog_features.py's
+`clog_features.csv`, and any derived feature/join tables — kept here because they
+embed human winrates + proprietary level designs). The dataset is
+classified; only the survey/smoke scripts, the oracle code, and the level
+schema are committable — never the derived artifacts.
 
 Gitignore lives in the parent directory (`../.gitignore`). It currently covers
 `.venv/`, `.claude/`, `CLASSIFIED.paxie_data/`, `outputs/`, plus Python
