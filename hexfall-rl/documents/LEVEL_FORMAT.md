@@ -282,7 +282,7 @@ Selected fields, briefly (the schema covers value ranges):
 
 - **`totalBlocks`** — total slice count in the field. Observed range: 144–1272, median 657.
 - **`colorCount`** — declared distinct color count. The loader cross-checks this against the actual count of distinct color tokens in the level data; mismatches produce a warning but do not block loading (two levels in the dataset — 87 and 91 — have this mismatch).
-- **`maxColorsPerStack`** — maximum distinct colors per stack. Always 1 or 2 in the dataset.
+- **`maxColorsPerStack`** — declared maximum distinct colors per stack (a generator knob, not ground truth). Declared values are 1–2 in the dataset ({1: 31, 2: 69}), but actual distinct colors per stack reach 3 in 15 levels (18, 38, 43, 44, 49, 50, 54, 60, 62, 63, 66, 68, 74, 78, 81); 17 levels have declared ≠ actual. As with `colorCount`, treat `editorMeta` as informational — compute per-stack color facts from `hexStackArea.stacks[*].colors`, never this field.
 - **`heightMin`, `heightMax`** — stack height range.
 - **`randomness`** — generator randomness knob, range 0.0–0.65 in dataset.
 - **`verticalPercent`, `horizontalPercent`** — generator-pattern knobs.
