@@ -6,9 +6,16 @@ heuristic), :class:`LookaheadPlayer` (depth-k forward search) and
 player on a level and returns its winrate.
 """
 from hexfall.players.base import Player
-from hexfall.players.evaluator import evaluate
+from hexfall.players.evaluator import evaluate, evaluate_graded
 from hexfall.players.greedy import GreedyPlayer
 from hexfall.players.lookahead import LookaheadPlayer
 from hexfall.players.mcts import MCTSPlayer
 
-__all__ = ["Player", "GreedyPlayer", "LookaheadPlayer", "MCTSPlayer", "evaluate"]
+__all__ = [
+    "Player",
+    "GreedyPlayer",
+    "LookaheadPlayer",
+    "MCTSPlayer",
+    "evaluate",
+    "evaluate_graded",
+]

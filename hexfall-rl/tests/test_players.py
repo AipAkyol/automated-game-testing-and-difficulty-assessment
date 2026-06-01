@@ -5,10 +5,17 @@ import numpy as np
 import pytest
 
 from hexfall.env import HexFallEnv
-from hexfall.players import GreedyPlayer, LookaheadPlayer, Player, evaluate
+from hexfall.players import (
+    GreedyPlayer,
+    LookaheadPlayer,
+    Player,
+    evaluate,
+    evaluate_graded,
+)
 
 LEVELS_DIR = Path(__file__).parent.parent / "levels"
 TINY = LEVELS_DIR / "tiny_solvable.json"
+FORCED_LOSE = LEVELS_DIR / "forced_lose.json"
 
 
 @pytest.fixture(autouse=True)
@@ -141,3 +148,62 @@ def test_lookahead_returns_legal_action():
     action = LookaheadPlayer(depth=1).act(obs, env)
     assert isinstance(action, int)
     assert obs["action_mask"][action] == 1
+
+
+# ---------------------------------------------------------------------------
+# Test 10: graded evaluation — per-episode keys and types (Issue F)
+# ---------------------------------------------------------------------------
+
+def test_evaluate_graded_episode_keys_and_types():
+    result = evaluate_graded(GreedyPlayer(), TINY, n_episodes=5, seed=42)
+
+    # Aggregate shape.
+    assert result["n_episodes"] == 5
+    assert len(result["episodes"]) == 5
+    assert 0.0 <= result["winrate"] <= 1.0
+    assert 0.0 <= result["mean_slices_cleared_fraction"] <= 1.0
+    assert result["mean_moves_survived"] >= 0.0
+    # winrate aggregate matches the scalar evaluate() path exactly.
+    assert result["winrate"] == evaluate(GreedyPlayer(), TINY, n_episodes=5, seed=42)
+
+    for ep in result["episodes"]:
+        assert set(ep) >= {"win", "slices_cleared_fraction", "moves_survived"}
+        assert isinstance(ep["win"], bool)
+        assert isinstance(ep["slices_cleared_fraction"], float)
+        assert isinstance(ep["moves_survived"], int)
+
+
+# ---------------------------------------------------------------------------
+# Test 11: slices_cleared_fraction stays within [0, 1] (win and lose levels)
+# ---------------------------------------------------------------------------
+
+def test_evaluate_graded_fraction_in_unit_interval():
+    for level in (TINY, FORCED_LOSE):
+        result = evaluate_graded(GreedyPlayer(), level, n_episodes=5, seed=42)
+        for ep in result["episodes"]:
+            assert 0.0 <= ep["slices_cleared_fraction"] <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# Test 12: a fully-solved (won) episode clears every slice (fraction == 1.0)
+# ---------------------------------------------------------------------------
+
+def test_evaluate_graded_win_clears_all_slices():
+    # tiny_solvable is always solvable; greedy wins every episode here.
+    result = evaluate_graded(GreedyPlayer(), TINY, n_episodes=10, seed=42)
+    won = [ep for ep in result["episodes"] if ep["win"]]
+    assert won, "expected at least one won episode on tiny_solvable"
+    for ep in won:
+        # Win <=> empty field (HEXFALL_MDP_SPEC.md §7.1) => fraction == 1.0.
+        assert ep["slices_cleared_fraction"] == pytest.approx(1.0)
+        assert ep["moves_survived"] > 0
+
+
+# ---------------------------------------------------------------------------
+# Test 13: graded evaluation is deterministic under a fixed seed
+# ---------------------------------------------------------------------------
+
+def test_evaluate_graded_determinism():
+    r1 = evaluate_graded(GreedyPlayer(), TINY, n_episodes=5, seed=99)
+    r2 = evaluate_graded(GreedyPlayer(), TINY, n_episodes=5, seed=99)
+    assert r1 == r2
