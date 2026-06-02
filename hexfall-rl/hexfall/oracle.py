@@ -28,7 +28,14 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from hexfall.level_loader import load_level
-from hexfall.types import GameState, Generator, IceBucket, PlainBucket, QuestionBucket
+from hexfall.types import (
+    GameState,
+    Generator,
+    IceBucket,
+    PlainBucket,
+    QuestionBucket,
+    Wall,
+)
 
 # --- Configuration -----------------------------------------------------------
 
@@ -41,8 +48,34 @@ STRUCTURAL_FEATURE_NAMES = [
     "ice_count",
     "reserve_area",
 ]
+#: Expanded structural-count feature names, in vector order (Issue I). These are
+#: an OPTIONAL sibling block that slots BETWEEN the structural and player blocks
+#: when ``include_expanded`` is set; the 5-structural + 3-player default is
+#: untouched. Every value is read from the loaded GameState, never editorMeta.
+EXPANDED_FEATURE_NAMES = [
+    "generator_count",
+    "wall_count",
+    "woodbox_count",
+    "reserve_bucket_count",
+    "generator_queue_total_length",
+    "avg_field_stack_height",
+    "max_field_stack_height",
+    "mechanic_diversity",
+]
 PLAYER_FEATURE_NAMES = ["greedy_winrate", "lookahead_winrate", "mcts_winrate"]
 FEATURE_NAMES = STRUCTURAL_FEATURE_NAMES + PLAYER_FEATURE_NAMES
+
+
+def feature_names(include_expanded: bool = False) -> list[str]:
+    """Feature-vector column names, in order, for the chosen assembly.
+
+    Default (``include_expanded=False``) returns the canonical 8 (5 structural +
+    3 player) — identical to :data:`FEATURE_NAMES`. When ``True`` the 8 expanded
+    counts slot between the structural and player blocks.
+    """
+    if include_expanded:
+        return STRUCTURAL_FEATURE_NAMES + EXPANDED_FEATURE_NAMES + PLAYER_FEATURE_NAMES
+    return FEATURE_NAMES
 
 #: Ridge regularization strength. PRE-COMMITTED — not tuned to any metric.
 ALPHA = 1.0
@@ -103,6 +136,83 @@ def extract_structural_features(state: GameState) -> list[float]:
     ]
 
 
+def extract_expanded_features(state: GameState) -> dict[str, float]:
+    """Return the 8 expanded structural-count features (Issue I), keyed by name.
+
+    Sibling of :func:`extract_structural_features` — kept separate so that
+    function stays bit-identical (it backs the 0.6422 frame guard). Every value
+    is derived from the loaded, post-quiescence GameState, never from
+    ``editorMeta``. Returns exactly the keys in :data:`EXPANDED_FEATURE_NAMES`.
+
+      generator_count               number of Generator reserve cells.
+      wall_count                    number of Wall reserve cells.
+      woodbox_count                 number of QuestionBucket (?-bucket) cells.
+      reserve_bucket_count          pickable buckets at start = plain + ? + ice
+                                    (generators, walls, pins, and generator-queued
+                                    outputs are NOT pickable starting cells).
+      generator_queue_total_length  Σ over generators of remaining-to-produce.
+      avg_field_stack_height        total slices / number of (non-empty) field
+                                    stacks; 0.0 if there are no stacks.
+      max_field_stack_height        tallest field stack; 0 if there are none.
+      mechanic_diversity            count of distinct mechanic types present
+                                    among {plain, ?, ice, wall, generator, pin}
+                                    — an integer in 1..6 (0 only if a reserve is
+                                    wholly empty, which real levels never are).
+    """
+    generator_count = 0
+    wall_count = 0
+    woodbox_count = 0
+    reserve_bucket_count = 0
+    generator_queue_total_length = 0
+    present: set[str] = set()
+
+    for row in state.reserve:
+        for cell in row:
+            if isinstance(cell, Generator):
+                generator_count += 1
+                generator_queue_total_length += cell.remaining
+                present.add("generator")
+            elif isinstance(cell, Wall):
+                wall_count += 1
+                present.add("wall")
+            elif isinstance(cell, QuestionBucket):
+                woodbox_count += 1
+                reserve_bucket_count += 1
+                present.add("question")
+            elif isinstance(cell, IceBucket):
+                reserve_bucket_count += 1
+                present.add("ice")
+            elif isinstance(cell, PlainBucket):
+                reserve_bucket_count += 1
+                present.add("plain")
+
+    # Pins overlay the grid (stored separately); count the type as present if any
+    # pin still stands. On a freshly loaded level none are destroyed yet.
+    if any(not p.destroyed for p in state.pins):
+        present.add("pin")
+
+    # Field stacks: count and measure only the non-empty stacks. On a freshly
+    # loaded level every declared stack is non-empty, so this equals len(field).
+    heights = [len(slices) for slices in state.field.values() if slices]
+    total_slices = sum(heights)
+    avg_field_stack_height = (total_slices / len(heights)) if heights else 0.0
+    max_field_stack_height = max(heights) if heights else 0
+
+    values = {
+        "generator_count": generator_count,
+        "wall_count": wall_count,
+        "woodbox_count": woodbox_count,
+        "reserve_bucket_count": reserve_bucket_count,
+        "generator_queue_total_length": generator_queue_total_length,
+        "avg_field_stack_height": avg_field_stack_height,
+        "max_field_stack_height": max_field_stack_height,
+        "mechanic_diversity": len(present),
+    }
+    # Honor the dict[str, float] contract: every value is a float (the
+    # integer-valued counts included), so downstream Ridge sees a uniform dtype.
+    return {name: float(values[name]) for name in EXPANDED_FEATURE_NAMES}
+
+
 def _coerce_state(level: str | Path | GameState, *, seed: int | None = None) -> GameState:
     """Accept either an already-loaded GameState or a path, return a GameState."""
     if isinstance(level, GameState):
@@ -137,8 +247,9 @@ class Oracle:
     standardization inside the pipeline is mandatory (not optional polish).
     """
 
-    def __init__(self, alpha: float = ALPHA):
+    def __init__(self, alpha: float = ALPHA, include_expanded: bool = False):
         self.alpha = alpha
+        self.include_expanded = include_expanded
         self.pipeline = Pipeline(
             [
                 ("scaler", StandardScaler()),
@@ -148,23 +259,32 @@ class Oracle:
         self._fitted = False
 
     @staticmethod
-    def _record_to_features(record) -> list[float]:
-        """Build an 8-feature vector from a fit record.
+    def _record_to_features(record, include_expanded: bool = False) -> list[float]:
+        """Build the feature vector from a fit record.
 
         ``record`` carries a loaded level plus its three precomputed player
         winrates. Accepts either a mapping with keys ``state``/``greedy_winrate``
         /``lookahead_winrate``/``mcts_winrate`` or an object with matching
         attributes.
+
+        Default (``include_expanded=False``) yields the canonical 8-vector
+        (5 structural + 3 player). When ``True`` the 8 expanded counts slot
+        between the structural and player blocks (a 16-vector).
         """
         get = (record.get if isinstance(record, dict) else lambda k: getattr(record, k))
         state = get("state")
         structural = extract_structural_features(state)
+        expanded = (
+            [extract_expanded_features(state)[n] for n in EXPANDED_FEATURE_NAMES]
+            if include_expanded
+            else []
+        )
         players = [
             float(get("greedy_winrate")),
             float(get("lookahead_winrate")),
             float(get("mcts_winrate")),
         ]
-        return structural + players
+        return structural + expanded + players
 
     def fit(self, levels, winrates) -> "Oracle":
         """Fit on records that already carry their player winrates.
@@ -175,7 +295,10 @@ class Oracle:
                 winrates are READ from the record — no agent is run here.
             winrates: human "% Win Rate" targets, aligned with ``levels``.
         """
-        X = np.array([self._record_to_features(r) for r in levels], dtype=float)
+        X = np.array(
+            [self._record_to_features(r, self.include_expanded) for r in levels],
+            dtype=float,
+        )
         y = np.asarray(winrates, dtype=float)
         self.pipeline.fit(X, y)
         self._fitted = True
@@ -193,6 +316,11 @@ class Oracle:
 
         state = _coerce_state(level)
         structural = extract_structural_features(state)
+        expanded = (
+            [extract_expanded_features(state)[n] for n in EXPANDED_FEATURE_NAMES]
+            if self.include_expanded
+            else []
+        )
 
         # Player winrates need a file path to spin up the env; if we were handed
         # a loaded GameState we cannot re-evaluate, so require a path here.
@@ -203,7 +331,7 @@ class Oracle:
             )
         players = _player_winrates(level)
 
-        X = np.array([structural + players], dtype=float)
+        X = np.array([structural + expanded + players], dtype=float)
         raw = float(self.pipeline.predict(X)[0])
         return max(0.0, min(1.0, raw))
 
@@ -213,4 +341,5 @@ class Oracle:
         if not self._fitted:
             raise RuntimeError("coefficients requested before fit()")
         ridge: Ridge = self.pipeline.named_steps["ridge"]
-        return dict(zip(FEATURE_NAMES, (float(c) for c in ridge.coef_)))
+        names = feature_names(self.include_expanded)
+        return dict(zip(names, (float(c) for c in ridge.coef_)))

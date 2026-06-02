@@ -19,7 +19,7 @@ hexfall-rl/
 │   ├── env.py                # Gymnasium wrapper (reset, step, observation, action mask)
 │   ├── game.py               # Core mechanics: ticks (ice thaw → pull → fill → fall → generator → reachability → pin destruction), reachability, action legality
 │   ├── level_loader.py       # Paxie JSON → game state; schema + 8 semantic checks; hard-rejects unsupported mechanics
-│   ├── oracle.py             # Difficulty oracle: 5 structural features + 3 player winrates → Ridge(StandardScaler) predicts human winrate; fit=20-ep matrix, predict=10-ep fresh
+│   ├── oracle.py             # Difficulty oracle: 5 structural features + 3 player winrates → Ridge(StandardScaler) predicts human winrate; fit=20-ep matrix, predict=10-ep fresh. Also exposes extract_expanded_features (8 structural counts, Issue I) behind an include_expanded=False flag — opt-in only, default 8-vector unchanged; expanded refit = honest negative
 │   ├── render.py             # CLI renderer: agent-view / full-view text dump (handles ice + pin overlay); has main() for `hexfall-render`
 │   ├── types.py              # Dataclasses: PlainBucket, QuestionBucket, IceBucket, Generator, Wall, Pin, BufferBucket, GameState
 │   ├── players/              # Bounded-rationality players + evaluator (winrates to fit vs. human data)
@@ -58,12 +58,13 @@ hexfall-rl/
 │   ├── fit_oracle.py           # Fits the oracle: pivots eval_matrix + joins Anıl CSV, LOO-CV Spearman/Pearson gate, ablation, scatter → CLASSIFIED.paxie_data/oracle/
 │   ├── fit_oracle_graded.py    # Issue F refit: 6 graded features (frac-cleared + moves × 3 players) in 3 ablation configs, LOO-CV vs Issue-C baseline + slice-count redundancy check; prints only, no artifacts
 │   ├── fit_oracle_human_tactics.py # Issue G refit: 3 configs (structural-only / +4 players / +human_tactics-only), LOO-CV vs Issue-C baseline + greedy & slice-count redundancy; prints only (verdict: human_tactics is noise)
-│   └── fit_oracle_clog.py     # Issue H Phase 3 refit: 4 configs (structural-only / +fcc+rhc / +3 players / fcc+rhc-only), LOO-CV vs 0.6422 baseline, frame guard + (b) coefficients; prints only (verdict: fcc+rhc honest negative)
+│   ├── fit_oracle_clog.py     # Issue H Phase 3 refit: 4 configs (structural-only / +fcc+rhc / +3 players / fcc+rhc-only), LOO-CV vs 0.6422 baseline, frame guard + (b) coefficients; prints only (verdict: fcc+rhc honest negative)
+│   └── fit_oracle_expanded.py # Issue I refit: 3 configs (structural-only / +8 expanded / +3 players), LOO-CV vs 0.6422 baseline, frame guard + (b) coefficients + per-feature vs slice-count sanity; prints only (verdict: expanded counts honest negative, lift -0.047)
 ├── outputs/                  # Generated evaluation artifacts — all gitignored at parent level (working-tree only, none committed)
 │   ├── eval_matrix.csv       # greedy/lookahead/mcts winrates per level (level_id,player,winrate,n_episodes,seed_base,wallclock_seconds)
 │   ├── eval_matrix_graded.csv # Graded matrix (Issue F): level_id,player,n_episodes,seed_base,winrate,mean_slices_cleared_fraction,mean_moves_survived,wallclock_seconds
 │   └── eval_matrix_human_tactics.csv # human_tactics winrate per level — same schema as eval_matrix.csv (Issue G)
-├── tests/                    # pytest test suite (125 tests across 8 files)
+├── tests/                    # pytest test suite (130 tests across 8 files)
 │   ├── __init__.py
 │   ├── test_env.py           # Tests for Gymnasium env wrapper (env.py)
 │   ├── test_game.py          # Tests for core mechanics, ice thaw, pin destruction, cascade (game.py)
@@ -72,7 +73,7 @@ hexfall-rl/
 │   ├── test_mcts.py          # Tests for MCTSPlayer: protocol, legal action, ≥greedy on tiny, Paxie sample, determinism
 │   ├── test_human_tactics.py # Tests for HumanTacticsPlayer: protocol/legal-action, determinism, tiny+real-level e2e, matched>speculative, pin_setup>match (engine-verified) [Issue G]
 │   ├── test_clog.py          # Tests for clog extractors (Issue H): keys/types, features ∈ [0,1], ctd=0 on monochrome fixture, determinism, hand-computed exact values
-│   └── test_oracle.py        # Tests for oracle: 5-feature/8-vector shape, fit determinism, predict clamp [0,1], predict determinism
+│   └── test_oracle.py        # Tests for oracle: 5-feature/8-vector shape, fit determinism, predict clamp [0,1], predict determinism; plus Issue I expanded features (8 keys/types, non-negativity, determinism, hand-checked counts on fixtures, structural-only path unchanged)
 ├── vendor/                   # Third-party reference code, kept byte-identical for upstream diffability
 │   └── cleanrl_ppo_reference.py  # CleanRL ppo.py @ commit fe8d8a0 — template for scripts/train_ppo.py
 └── runs/                     # (gitignored) TensorBoard event files + .pt checkpoints from train_ppo.py runs
